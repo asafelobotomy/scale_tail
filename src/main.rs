@@ -125,6 +125,63 @@ struct Account {
 struct AppSettings {
     autoconnect: bool,
     autostart: bool,
+    update_check: bool, // on by default; disabled by a marker file
+}
+
+const REPO: &str = "asafelobotomy/scale_tail";
+
+#[derive(Clone, Debug)]
+struct UpdateInfo {
+    version: String,
+    url: String,
+}
+
+#[derive(Deserialize)]
+struct GhRelease {
+    tag_name: String,
+    html_url: String,
+}
+
+fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
+    let mut it = v.trim().trim_start_matches('v').split(['.', '-', '+']).map(|x| x.parse::<u64>().ok());
+    Some((it.next()??, it.next()??, it.next()??))
+}
+
+/// Queries GitHub for the latest tagged release; Some if it is newer than this build.
+async fn check_update() -> Result<Option<UpdateInfo>, String> {
+    tokio::task::spawn_blocking(|| {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(15)))
+            .build()
+            .into();
+        let mut resp = agent
+            .get(format!("https://api.github.com/repos/{REPO}/releases/latest"))
+            .header("User-Agent", concat!("scale_tail/", env!("CARGO_PKG_VERSION")))
+            .header("Accept", "application/vnd.github+json")
+            .call()
+            .map_err(|e| format!("update check failed: {e}"))?;
+        let body = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
+        let rel: GhRelease = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+        let latest = parse_version(&rel.tag_name).ok_or("unrecognised release tag")?;
+        let current = parse_version(env!("CARGO_PKG_VERSION")).ok_or("bad current version")?;
+        Ok((latest > current).then(|| UpdateInfo { version: rel.tag_name.trim_start_matches('v').to_string(), url: rel.html_url }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn update_check_file() -> std::path::PathBuf {
+    config_dir().join("scale_tail/no-update-check")
+}
+
+fn set_update_check(on: bool) -> Result<(), String> {
+    let f = update_check_file();
+    if on {
+        std::fs::remove_file(&f).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }).map_err(|e| e.to_string())
+    } else {
+        std::fs::create_dir_all(f.parent().unwrap()).map_err(|e| e.to_string())?;
+        std::fs::write(&f, "1").map_err(|e| e.to_string())
+    }
 }
 
 fn config_dir() -> std::path::PathBuf {
@@ -143,7 +200,7 @@ fn autoconnect_file() -> std::path::PathBuf {
 }
 
 fn load_settings() -> AppSettings {
-    AppSettings { autoconnect: autoconnect_file().exists(), autostart: autostart_file().exists() }
+    AppSettings { autoconnect: autoconnect_file().exists(), autostart: autostart_file().exists(), update_check: !update_check_file().exists() }
 }
 
 fn set_autoconnect(on: bool) -> Result<(), String> {
@@ -279,6 +336,9 @@ enum Action {
     SetPref(&'static str, bool), // `tailscale set --<flag>=<bool>`
     SetAutostart(bool),
     SetAutoconnect(bool),
+    SetUpdateCheck(bool),
+    CheckUpdates(bool), // true = user-initiated (always report the result)
+    OpenUrl(String),
     SwitchAccount(String),
     Ping(String),
     SendFile(String),
@@ -322,6 +382,12 @@ async fn perform(action: Action) {
         Action::SetPref(flag, on) => ts(&["set", &format!("--{flag}={on}")]).await.map(|_| ()),
         Action::SetAutostart(on) => set_autostart(on),
         Action::SetAutoconnect(on) => set_autoconnect(on),
+        Action::SetUpdateCheck(on) => set_update_check(on),
+        Action::OpenUrl(u) => {
+            let _ = Command::new("xdg-open").arg(u).spawn();
+            Ok(())
+        }
+        Action::CheckUpdates(_) => Ok(()), // handled in main loop (needs the tray handle)
         Action::SwitchAccount(id) => ts(&["switch", &id]).await.map(|_| ()),
         Action::Ping(target) => match ts(&["ping", "-c", "3", "--timeout", "3s", &target]).await {
             Ok(out) => {
@@ -398,6 +464,7 @@ fn decode_icon(bytes: &[u8]) -> ksni::Icon {
 
 struct TsTray {
     snap: Snapshot,
+    update: Option<UpdateInfo>,
     tx: UnboundedSender<Action>,
 }
 
@@ -474,6 +541,7 @@ impl TsTray {
         let items = vec![
             self.check("Start on login", self.snap.app.autostart, Action::SetAutostart),
             self.check("Auto-connect on launch", self.snap.app.autoconnect, Action::SetAutoconnect),
+            self.check("Check for updates automatically", self.snap.app.update_check, Action::SetUpdateCheck),
             MenuItem::Separator,
             self.check("Use Tailscale DNS", p.corp_dns, |v| Action::SetPref("accept-dns", v)),
             self.check("Accept subnet routes", p.route_all, |v| Action::SetPref("accept-routes", v)),
@@ -610,6 +678,19 @@ impl ksni::Tray for TsTray {
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let mut m: Vec<MenuItem<Self>> = vec![];
+        if let Some(u) = &self.update {
+            let url = u.url.clone();
+            m.push(
+                StandardItem {
+                    label: format!("Update available: v{}", u.version),
+                    icon_name: "software-update-available".into(),
+                    activate: self.act(move || Action::OpenUrl(url.clone())),
+                    ..Default::default()
+                }
+                .into(),
+            );
+            m.push(MenuItem::Separator);
+        }
         match &self.snap.state {
             State::Unavailable(e) => {
                 m.push(Self::label("Tailscale unavailable"));
@@ -691,6 +772,16 @@ impl ksni::Tray for TsTray {
         );
         m.push(
             StandardItem {
+                label: "Check for updates".into(),
+                icon_name: "system-software-update".into(),
+                activate: self.act(|| Action::CheckUpdates(true)),
+                ..Default::default()
+            }
+            .into(),
+        );
+        m.push(Self::label(concat!("scale_tail v", env!("CARGO_PKG_VERSION"))));
+        m.push(
+            StandardItem {
                 label: "Quit".into(),
                 icon_name: "application-exit".into(),
                 activate: self.act(|| Action::Quit),
@@ -709,7 +800,7 @@ async fn main() {
     if first.app.autoconnect && first.state == State::Stopped {
         perform(Action::Connect).await;
     }
-    let tray = TsTray { snap: fetch().await, tx };
+    let tray = TsTray { snap: fetch().await, update: None, tx };
     let handle = match tray.spawn().await {
         Ok(h) => h,
         Err(e) => {
@@ -719,14 +810,44 @@ async fn main() {
     };
 
     let mut tick = tokio::time::interval(Duration::from_secs(5));
+    let mut update_tick = tokio::time::interval(Duration::from_secs(6 * 60 * 60)); // first tick fires at startup
+    let mut notified: Option<String> = None;
     loop {
-        let refresh;
+        let mut refresh = false;
+        let mut check: Option<bool> = None;
         tokio::select! {
-            _ = tick.tick() => { refresh = true; }
+            _ = tick.tick() => refresh = true,
+            _ = update_tick.tick() => {
+                if load_settings().update_check { check = Some(false); }
+            }
             Some(a) = rx.recv() => {
-                if matches!(a, Action::Quit) { handle.shutdown().await; return; }
-                perform(a).await;
-                refresh = true;
+                match a {
+                    Action::Quit => { handle.shutdown().await; return; }
+                    Action::CheckUpdates(manual) => check = Some(manual),
+                    a => { perform(a).await; refresh = true; }
+                }
+            }
+        }
+        if let Some(manual) = check {
+            match check_update().await {
+                Ok(found) => {
+                    if let Some(u) = &found {
+                        if manual || notified.as_deref() != Some(&u.version) {
+                            let how = if std::env::var_os("APPIMAGE").is_some() {
+                                "Update via Gear Lever / AppImageUpdate, or download from the release page."
+                            } else {
+                                "Click the tray menu to open the release page."
+                            };
+                            notify("scale_tail update available", &format!("Version {} is out. {how}", u.version)).await;
+                            notified = Some(u.version.clone());
+                        }
+                    } else if manual {
+                        notify("scale_tail", "You're up to date.").await;
+                    }
+                    handle.update(move |t: &mut TsTray| t.update = found).await;
+                }
+                Err(e) if manual => notify("Update check failed", &e).await,
+                Err(_) => {}
             }
         }
         if refresh {

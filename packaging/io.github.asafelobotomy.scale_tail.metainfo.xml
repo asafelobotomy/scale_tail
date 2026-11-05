@@ -32,6 +32,23 @@
     <binary>scale_tail</binary>
   </provides>
   <releases>
-    <release version="0.4.0" date="2026-11-05"/>
+    <release version="0.5.0" date="2026-11-05">
+      <description>
+        <ul>
+          <li>Update checker: notifies when a new GitHub release is available</li>
+          <li>AppImage update information embedded for Gear Lever and AppImageUpdate</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/asafelobotomy/scale_tail/releases/tag/v0.5.0</url>
+    </release>
+    <release version="0.4.0" date="2026-11-05">
+      <description>
+        <ul>
+          <li>Settings submenu, start on login, auto-connect on launch</li>
+          <li>Account switching, ping, send files, suggested exit node</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/asafelobotomy/scale_tail/releases/tag/v0.4.0</url>
+    </release>
   </releases>
 </component>

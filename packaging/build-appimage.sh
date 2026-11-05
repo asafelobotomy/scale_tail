@@ -18,4 +18,8 @@ HERE="$(dirname "$(readlink -f "$0")")"
 exec "$HERE/usr/bin/scale_tail" "$@"
 RUN
 chmod +x "$A/AppRun"
-ARCH=x86_64 appimagetool --appimage-extract-and-run "$A" "scale_tail-$VERSION-x86_64.AppImage"
+# Embedded update info lets Gear Lever / AppImageUpdate find new GitHub releases;
+# with zsyncmake installed this also writes the matching .zsync delta file.
+UPDINFO="gh-releases-zsync|asafelobotomy|scale_tail|latest|scale_tail-*x86_64.AppImage.zsync"
+command -v zsyncmake >/dev/null || echo "note: zsyncmake not found, skipping .zsync file (update info is still embedded)"
+ARCH=x86_64 appimagetool --appimage-extract-and-run -u "$UPDINFO" "$A" "scale_tail-$VERSION-x86_64.AppImage"
