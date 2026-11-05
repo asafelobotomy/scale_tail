@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <defs><clipPath id="s"><path d="M32 3 L55 11 V30 C55 46 45 56 32 61 C19 56 9 46 9 30 V11 Z"/></clipPath></defs>
-<path d="M32 3 L55 11 V30 C55 46 45 56 32 61 C19 56 9 46 9 30 V11 Z" fill="#14532d"/>
-<g clip-path="url(#s)" fill="#166534" stroke="#052e16" stroke-width="1.2">
+<path d="M32 3 L55 11 V30 C55 46 45 56 32 61 C19 56 9 46 9 30 V11 Z" fill="#7f1d1d"/>
+<g clip-path="url(#s)" fill="#991b1b" stroke="#2a0707" stroke-width="1.2">
 <circle cx="9.0" cy="8.0" r="6.5"/>
 <circle cx="22.0" cy="8.0" r="6.5"/>
 <circle cx="35.0" cy="8.0" r="6.5"/>
@@ -52,5 +52,5 @@
 <circle cx="35.0" cy="66.5" r="6.5"/>
 <circle cx="48.0" cy="66.5" r="6.5"/>
 </g>
-<path d="M32 3 L55 11 V30 C55 46 45 56 32 61 C19 56 9 46 9 30 V11 Z" fill="none" stroke="#052e16" stroke-width="3" stroke-linejoin="round"/>
+<path d="M32 3 L55 11 V30 C55 46 45 56 32 61 C19 56 9 46 9 30 V11 Z" fill="none" stroke="#2a0707" stroke-width="3" stroke-linejoin="round"/>
 </svg>

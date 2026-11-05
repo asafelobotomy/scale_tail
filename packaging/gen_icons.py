@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Generates the shield-with-scales icons (SVG), then run rsvg-convert for PNGs.
-on = light green (connected), off = dark green (disconnected)."""
+on = light green (connected), off = dark red (disconnected)."""
 import math, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHIELD = "M32 3 L55 11 V30 C55 46 45 56 32 61 C19 56 9 46 9 30 V11 Z"
 THEMES = {
     "on":  dict(shield="#4ade80", edge="#14532d", scale="#86efac", line="#15803d"),
-    "off": dict(shield="#14532d", edge="#052e16", scale="#166534", line="#052e16"),
+    "off": dict(shield="#7f1d1d", edge="#2a0707", scale="#991b1b", line="#2a0707"),
 }
 def svg(t):
     r, circles = 6.5, []

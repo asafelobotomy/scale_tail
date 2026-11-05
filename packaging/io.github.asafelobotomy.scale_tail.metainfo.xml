@@ -30,6 +30,6 @@
     <binary>scale_tail</binary>
   </provides>
   <releases>
-    <release version="0.3.0" date="2026-11-05"/>
+    <release version="0.3.1" date="2026-11-05"/>
   </releases>
 </component>
