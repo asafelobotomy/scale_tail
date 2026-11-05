@@ -32,11 +32,19 @@
     <binary>scale_tail</binary>
   </provides>
   <releases>
+    <release version="0.5.1" date="2026-11-05">
+      <description>
+        <ul>
+          <li>Update hints and metadata are launcher-agnostic; added X-AppImage-Version and --version</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/asafelobotomy/scale_tail/releases/tag/v0.5.1</url>
+    </release>
     <release version="0.5.0" date="2026-11-05">
       <description>
         <ul>
           <li>Update checker: notifies when a new GitHub release is available</li>
-          <li>AppImage update information embedded for Gear Lever and AppImageUpdate</li>
+          <li>AppImage update information embedded for AppImage launchers and updaters</li>
         </ul>
       </description>
       <url type="details">https://github.com/asafelobotomy/scale_tail/releases/tag/v0.5.0</url>

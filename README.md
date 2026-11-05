@@ -33,5 +33,7 @@ MIT, see [LICENSE](LICENSE).
 ## Updating the AppImage
 
 The AppImage embeds update information (`gh-releases-zsync`) and each release ships a
-`.zsync` file, so Gear Lever and AppImageUpdate can detect and apply updates. Release notes
+`.zsync` file, so any AppImage launcher or updater that supports the standard update mechanism (Gear Lever,
+AppImageUpdate, AppImageLauncher, etc.) can detect and apply updates. The desktop entry also carries
+`X-AppImage-Version`, and `scale_tail --version` prints the version. Release notes
 are published in the AppStream metadata and on the GitHub release page.

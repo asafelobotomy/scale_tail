@@ -795,6 +795,10 @@ impl ksni::Tray for TsTray {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("scale_tail {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     let (tx, mut rx) = unbounded_channel::<Action>();
     let first = fetch().await;
     if first.app.autoconnect && first.state == State::Stopped {
@@ -834,7 +838,7 @@ async fn main() {
                     if let Some(u) = &found {
                         if manual || notified.as_deref() != Some(&u.version) {
                             let how = if std::env::var_os("APPIMAGE").is_some() {
-                                "Update via Gear Lever / AppImageUpdate, or download from the release page."
+                                "Update through your AppImage launcher or AppImageUpdate, or download it from the release page."
                             } else {
                                 "Click the tray menu to open the release page."
                             };
