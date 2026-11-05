@@ -14,7 +14,9 @@
     <ul>
       <li>Connect and disconnect Tailscale</li>
       <li>Choose or clear an exit node</li>
-      <li>Browse peers and copy their IP addresses or DNS names</li>
+      <li>Browse peers, copy their addresses, ping them and send files</li>
+      <li>Switch accounts and toggle common Tailscale settings</li>
+      <li>Start on login and auto-connect on launch</li>
       <li>Open the login page when Tailscale needs authentication</li>
     </ul>
     <p>It requires the tailscale command to be installed and the tailscaled service to be running.</p>
@@ -30,6 +32,6 @@
     <binary>scale_tail</binary>
   </provides>
   <releases>
-    <release version="0.3.1" date="2026-11-05"/>
+    <release version="0.4.0" date="2026-11-05"/>
   </releases>
 </component>

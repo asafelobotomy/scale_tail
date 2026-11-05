@@ -90,12 +90,106 @@ enum State {
     Other(String),
 }
 
+#[derive(Deserialize, Default, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+struct Prefs {
+    #[serde(default)]
+    route_all: bool,
+    #[serde(default, rename = "CorpDNS")]
+    corp_dns: bool,
+    #[serde(default, rename = "ExitNodeAllowLANAccess")]
+    exit_node_allow_lan_access: bool,
+    #[serde(default)]
+    shields_up: bool,
+    #[serde(default, rename = "RunSSH")]
+    run_ssh: bool,
+    #[serde(default)]
+    advertise_routes: Option<Vec<String>>,
+}
+
+impl Prefs {
+    fn advertises_exit_node(&self) -> bool {
+        self.advertise_routes.as_ref().is_some_and(|r| r.iter().any(|x| x == "0.0.0.0/0"))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Account {
+    id: String,
+    label: String,
+    active: bool,
+}
+
+/// scale_tail's own settings.
+#[derive(Clone, Debug, Default)]
+struct AppSettings {
+    autoconnect: bool,
+    autostart: bool,
+}
+
+fn config_dir() -> std::path::PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+        .unwrap_or_else(|| ".".into())
+}
+
+fn autostart_file() -> std::path::PathBuf {
+    config_dir().join("autostart/scale_tail.desktop")
+}
+
+fn autoconnect_file() -> std::path::PathBuf {
+    config_dir().join("scale_tail/autoconnect")
+}
+
+fn load_settings() -> AppSettings {
+    AppSettings { autoconnect: autoconnect_file().exists(), autostart: autostart_file().exists() }
+}
+
+fn set_autoconnect(on: bool) -> Result<(), String> {
+    let f = autoconnect_file();
+    if on {
+        std::fs::create_dir_all(f.parent().unwrap()).map_err(|e| e.to_string())?;
+        std::fs::write(&f, "1").map_err(|e| e.to_string())
+    } else {
+        std::fs::remove_file(&f).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }).map_err(|e| e.to_string())
+    }
+}
+
+fn set_autostart(on: bool) -> Result<(), String> {
+    let f = autostart_file();
+    if !on {
+        return std::fs::remove_file(&f)
+            .or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) })
+            .map_err(|e| e.to_string());
+    }
+    // Inside an AppImage, $APPIMAGE is the file to relaunch; current_exe would be a temp mount.
+    let exe = std::env::var("APPIMAGE")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::current_exe().ok())
+        .ok_or("cannot determine executable path")?;
+    let exe = exe.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+    std::fs::create_dir_all(f.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(
+        &f,
+        format!(
+            "[Desktop Entry]\nType=Application\nName=scale_tail\nComment=System tray control centre for Tailscale\nExec=\"{exe}\"\nIcon=scale_tail\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
+        ),
+    )
+    .map_err(|e| e.to_string())
+}
+
 #[derive(Clone, Debug)]
 struct Snapshot {
     state: State,
     me: Option<Node>,
     tailnet: String,
     peers: Vec<Node>,
+    prefs: Prefs,
+    accounts: Vec<Account>,
+    app: AppSettings,
 }
 
 async fn ts(args: &[&str]) -> Result<String, String> {
@@ -121,7 +215,15 @@ async fn fetch() -> Snapshot {
         .stdin(Stdio::null())
         .output()
         .await;
-    let fail = |msg: String| Snapshot { state: State::Unavailable(msg), me: None, tailnet: String::new(), peers: vec![] };
+    let fail = |msg: String| Snapshot {
+        state: State::Unavailable(msg),
+        me: None,
+        tailnet: String::new(),
+        peers: vec![],
+        prefs: Prefs::default(),
+        accounts: vec![],
+        app: load_settings(),
+    };
     let out = match out {
         Ok(o) => o,
         Err(e) => return fail(format!("tailscale CLI not found: {e}")),
@@ -138,12 +240,32 @@ async fn fetch() -> Snapshot {
     };
     let mut peers: Vec<Node> = raw.peer.values().map(Node::from).collect();
     peers.sort_by(|a, b| b.online.cmp(&a.online).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    let prefs = ts(&["debug", "prefs"]).await.ok().and_then(|o| serde_json::from_str(&o).ok()).unwrap_or_default();
+    let accounts = ts(&["switch", "--list"]).await.map(|o| parse_accounts(&o)).unwrap_or_default();
     Snapshot {
         state,
         me: raw.me.as_ref().map(Node::from),
         tailnet: raw.current_tailnet.map(|t| t.name).unwrap_or_default(),
         peers,
+        prefs,
+        accounts,
+        app: load_settings(),
     }
+}
+
+/// Parses `tailscale switch --list` (header row, then `ID  Tailnet  Account[*]`).
+fn parse_accounts(out: &str) -> Vec<Account> {
+    out.lines()
+        .skip(1)
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            if f.len() < 3 {
+                return None;
+            }
+            let active = f[2].ends_with('*');
+            Some(Account { id: f[0].to_string(), label: format!("{} ({})", f[2].trim_end_matches('*'), f[1]), active })
+        })
+        .collect()
 }
 
 // ---------- actions ----------
@@ -153,6 +275,13 @@ enum Action {
     Connect,
     Disconnect,
     SetExitNode(Option<String>),
+    UseSuggestedExitNode,
+    SetPref(&'static str, bool), // `tailscale set --<flag>=<bool>`
+    SetAutostart(bool),
+    SetAutoconnect(bool),
+    SwitchAccount(String),
+    Ping(String),
+    SendFile(String),
     Login(String),
     Copy(String),
     Refresh,
@@ -188,6 +317,45 @@ async fn perform(action: Action) {
         Action::SetExitNode(n) => {
             let arg = format!("--exit-node={}", n.unwrap_or_default());
             ts(&["set", &arg]).await.map(|_| ())
+        }
+        Action::UseSuggestedExitNode => ts(&["set", "--exit-node=auto:any"]).await.map(|_| ()),
+        Action::SetPref(flag, on) => ts(&["set", &format!("--{flag}={on}")]).await.map(|_| ()),
+        Action::SetAutostart(on) => set_autostart(on),
+        Action::SetAutoconnect(on) => set_autoconnect(on),
+        Action::SwitchAccount(id) => ts(&["switch", &id]).await.map(|_| ()),
+        Action::Ping(target) => match ts(&["ping", "-c", "3", "--timeout", "3s", &target]).await {
+            Ok(out) => {
+                notify(&format!("Ping {target}"), out.lines().last().unwrap_or("done")).await;
+                Ok(())
+            }
+            Err(e) => Err(e),
+        },
+        Action::SendFile(target) => {
+            let pick = Command::new("zenity")
+                .args(["--file-selection", "--multiple", "--separator=\n", "--title=Send files via Tailscale"])
+                .stdin(Stdio::null())
+                .output()
+                .await;
+            match pick {
+                Ok(o) if o.status.success() => {
+                    let files: Vec<String> = String::from_utf8_lossy(&o.stdout).lines().map(String::from).collect();
+                    if files.is_empty() {
+                        Ok(())
+                    } else {
+                        let dest = format!("{target}:");
+                        let mut args: Vec<&str> = vec!["file", "cp"];
+                        args.extend(files.iter().map(String::as_str));
+                        args.push(&dest);
+                        let r = ts(&args).await.map(|_| ());
+                        if r.is_ok() {
+                            notify("File sent", &format!("{} file(s) to {target}", files.len())).await;
+                        }
+                        r
+                    }
+                }
+                Ok(_) => Ok(()), // cancelled
+                Err(_) => Err("install zenity to pick files".into()),
+            }
         }
         Action::Login(url) => {
             if url.is_empty() {
@@ -268,6 +436,18 @@ impl TsTray {
         let tx = self.tx.clone();
 
         let mut submenu: Vec<MenuItem<Self>> = vec![];
+        if !exits.is_empty() {
+            submenu.push(
+                StandardItem {
+                    label: "Use suggested exit node".into(),
+                    icon_name: "starred-symbolic".into(),
+                    activate: self.act(|| Action::UseSuggestedExitNode),
+                    ..Default::default()
+                }
+                .into(),
+            );
+            submenu.push(MenuItem::Separator);
+        }
         if exits.is_empty() {
             submenu.push(Self::label("No exit nodes available"));
         } else {
@@ -283,6 +463,53 @@ impl TsTray {
             );
         }
         SubMenu { label: title, submenu, ..Default::default() }.into()
+    }
+
+    fn check(&self, label: &str, checked: bool, next: impl Fn(bool) -> Action + Send + 'static) -> MenuItem<Self> {
+        CheckmarkItem { label: label.into(), checked, activate: self.act(move || next(!checked)), ..Default::default() }.into()
+    }
+
+    fn settings_menu(&self) -> MenuItem<Self> {
+        let p = &self.snap.prefs;
+        let items = vec![
+            self.check("Start on login", self.snap.app.autostart, Action::SetAutostart),
+            self.check("Auto-connect on launch", self.snap.app.autoconnect, Action::SetAutoconnect),
+            MenuItem::Separator,
+            self.check("Use Tailscale DNS", p.corp_dns, |v| Action::SetPref("accept-dns", v)),
+            self.check("Accept subnet routes", p.route_all, |v| Action::SetPref("accept-routes", v)),
+            self.check("Allow LAN access with exit node", p.exit_node_allow_lan_access, |v| {
+                Action::SetPref("exit-node-allow-lan-access", v)
+            }),
+            self.check("Shields up (block incoming)", p.shields_up, |v| Action::SetPref("shields-up", v)),
+            self.check("Tailscale SSH server", p.run_ssh, |v| Action::SetPref("ssh", v)),
+            self.check("Advertise as exit node", p.advertises_exit_node(), |v| Action::SetPref("advertise-exit-node", v)),
+        ];
+        SubMenu { label: "Settings".into(), icon_name: "configure".into(), submenu: items, ..Default::default() }.into()
+    }
+
+    fn accounts_menu(&self) -> Option<MenuItem<Self>> {
+        if self.snap.accounts.len() < 2 {
+            return None;
+        }
+        let selected = self.snap.accounts.iter().position(|a| a.active).unwrap_or(0);
+        let ids: Vec<String> = self.snap.accounts.iter().map(|a| a.id.clone()).collect();
+        let tx = self.tx.clone();
+        let options = self.snap.accounts.iter().map(|a| RadioItem { label: a.label.clone(), ..Default::default() }).collect();
+        Some(
+            SubMenu {
+                label: "Account".into(),
+                submenu: vec![RadioGroup {
+                    selected,
+                    select: Box::new(move |_, i| {
+                        let _ = tx.send(Action::SwitchAccount(ids[i].clone()));
+                    }),
+                    options,
+                }
+                .into()],
+                ..Default::default()
+            }
+            .into(),
+        )
     }
 
     fn peers_menu(&self) -> MenuItem<Self> {
@@ -316,6 +543,29 @@ impl TsTray {
                         }
                         .into(),
                     );
+                    if p.online {
+                        let target = if p.dns.is_empty() { p.ip.clone() } else { p.dns.clone() };
+                        let t2 = target.clone();
+                        sub.push(MenuItem::Separator);
+                        sub.push(
+                            StandardItem {
+                                label: "Ping".into(),
+                                icon_name: "network-wireless".into(),
+                                activate: self.act(move || Action::Ping(target.clone())),
+                                ..Default::default()
+                            }
+                            .into(),
+                        );
+                        sub.push(
+                            StandardItem {
+                                label: "Send file…".into(),
+                                icon_name: "document-send".into(),
+                                activate: self.act(move || Action::SendFile(t2.clone())),
+                                ..Default::default()
+                            }
+                            .into(),
+                        );
+                    }
                     SubMenu { label: format!("{dot} {}", p.name), submenu: sub, ..Default::default() }.into()
                 })
                 .collect()
@@ -378,6 +628,8 @@ impl ksni::Tray for TsTray {
                     }
                     .into(),
                 );
+                m.extend(self.accounts_menu());
+                m.push(self.settings_menu());
             }
             State::NeedsLogin(url) => {
                 m.push(Self::label("Login required"));
@@ -413,6 +665,8 @@ impl ksni::Tray for TsTray {
                 m.push(MenuItem::Separator);
                 m.push(self.exit_node_menu());
                 m.push(self.peers_menu());
+                m.extend(self.accounts_menu());
+                m.push(self.settings_menu());
                 m.push(MenuItem::Separator);
                 m.push(
                     StandardItem {
@@ -451,6 +705,10 @@ impl ksni::Tray for TsTray {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let (tx, mut rx) = unbounded_channel::<Action>();
+    let first = fetch().await;
+    if first.app.autoconnect && first.state == State::Stopped {
+        perform(Action::Connect).await;
+    }
     let tray = TsTray { snap: fetch().await, tx };
     let handle = match tray.spawn().await {
         Ok(h) => h,
