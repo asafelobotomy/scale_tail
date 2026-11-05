@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<defs><clipPath id="s"><path d="M32 3 L55 11 V30 C55 46 45 56 32 61 C19 56 9 46 9 30 V11 Z"/></clipPath></defs>
+<path d="M32 3 L55 11 V30 C55 46 45 56 32 61 C19 56 9 46 9 30 V11 Z" fill="#4ade80"/>
+<g clip-path="url(#s)" fill="#86efac" stroke="#15803d" stroke-width="1.2">
+<circle cx="9.0" cy="8.0" r="6.5"/>
+<circle cx="22.0" cy="8.0" r="6.5"/>
+<circle cx="35.0" cy="8.0" r="6.5"/>
+<circle cx="48.0" cy="8.0" r="6.5"/>
+<circle cx="2.5" cy="13.9" r="6.5"/>
+<circle cx="15.5" cy="13.9" r="6.5"/>
+<circle cx="28.5" cy="13.9" r="6.5"/>
+<circle cx="41.5" cy="13.9" r="6.5"/>
+<circle cx="54.5" cy="13.9" r="6.5"/>
+<circle cx="9.0" cy="19.7" r="6.5"/>
+<circle cx="22.0" cy="19.7" r="6.5"/>
+<circle cx="35.0" cy="19.7" r="6.5"/>
+<circle cx="48.0" cy="19.7" r="6.5"/>
+<circle cx="2.5" cy="25.6" r="6.5"/>
+<circle cx="15.5" cy="25.6" r="6.5"/>
+<circle cx="28.5" cy="25.6" r="6.5"/>
+<circle cx="41.5" cy="25.6" r="6.5"/>
+<circle cx="54.5" cy="25.6" r="6.5"/>
+<circle cx="9.0" cy="31.4" r="6.5"/>
+<circle cx="22.0" cy="31.4" r="6.5"/>
+<circle cx="35.0" cy="31.4" r="6.5"/>
+<circle cx="48.0" cy="31.4" r="6.5"/>
+<circle cx="2.5" cy="37.3" r="6.5"/>
+<circle cx="15.5" cy="37.3" r="6.5"/>
+<circle cx="28.5" cy="37.3" r="6.5"/>
+<circle cx="41.5" cy="37.3" r="6.5"/>
+<circle cx="54.5" cy="37.3" r="6.5"/>
+<circle cx="9.0" cy="43.1" r="6.5"/>
+<circle cx="22.0" cy="43.1" r="6.5"/>
+<circle cx="35.0" cy="43.1" r="6.5"/>
+<circle cx="48.0" cy="43.1" r="6.5"/>
+<circle cx="2.5" cy="49.0" r="6.5"/>
+<circle cx="15.5" cy="49.0" r="6.5"/>
+<circle cx="28.5" cy="49.0" r="6.5"/>
+<circle cx="41.5" cy="49.0" r="6.5"/>
+<circle cx="54.5" cy="49.0" r="6.5"/>
+<circle cx="9.0" cy="54.8" r="6.5"/>
+<circle cx="22.0" cy="54.8" r="6.5"/>
+<circle cx="35.0" cy="54.8" r="6.5"/>
+<circle cx="48.0" cy="54.8" r="6.5"/>
+<circle cx="2.5" cy="60.7" r="6.5"/>
+<circle cx="15.5" cy="60.7" r="6.5"/>
+<circle cx="28.5" cy="60.7" r="6.5"/>
+<circle cx="41.5" cy="60.7" r="6.5"/>
+<circle cx="54.5" cy="60.7" r="6.5"/>
+<circle cx="9.0" cy="66.5" r="6.5"/>
+<circle cx="22.0" cy="66.5" r="6.5"/>
+<circle cx="35.0" cy="66.5" r="6.5"/>
+<circle cx="48.0" cy="66.5" r="6.5"/>
+</g>
+<path d="M32 3 L55 11 V30 C55 46 45 56 32 61 C19 56 9 46 9 30 V11 Z" fill="none" stroke="#14532d" stroke-width="3" stroke-linejoin="round"/>
+</svg>

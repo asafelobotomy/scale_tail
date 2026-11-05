@@ -216,6 +216,18 @@ async fn perform(action: Action) {
 
 // ---------- tray ----------
 
+/// Decode an RGBA PNG into the ARGB32 (network order) layout StatusNotifierItem expects.
+fn decode_icon(bytes: &[u8]) -> ksni::Icon {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes)).read_info().expect("valid png");
+    let mut buf = vec![0; reader.output_buffer_size().expect("png size")];
+    let info = reader.next_frame(&mut buf).expect("png frame");
+    let data = buf[..info.buffer_size()]
+        .chunks_exact(4)
+        .flat_map(|p| [p[3], p[0], p[1], p[2]])
+        .collect();
+    ksni::Icon { width: info.width as i32, height: info.height as i32, data }
+}
+
 struct TsTray {
     snap: Snapshot,
     tx: UnboundedSender<Action>,
@@ -324,12 +336,16 @@ impl ksni::Tray for TsTray {
     fn title(&self) -> String {
         "Tailscale".into()
     }
-    fn icon_name(&self) -> String {
-        match self.snap.state {
-            State::Running => "network-vpn",
-            _ => "network-vpn-disconnected",
-        }
-        .into()
+    fn icon_pixmap(&self) -> Vec<ksni::Icon> {
+        static ICONS: std::sync::OnceLock<(ksni::Icon, ksni::Icon)> = std::sync::OnceLock::new();
+        let (on, off) = ICONS.get_or_init(|| {
+            (
+                decode_icon(include_bytes!("../packaging/tray_on.png")),
+                decode_icon(include_bytes!("../packaging/tray_off.png")),
+            )
+        });
+        let icon = if self.snap.state == State::Running { on } else { off };
+        vec![ksni::Icon { width: icon.width, height: icon.height, data: icon.data.clone() }]
     }
     fn tool_tip(&self) -> ksni::ToolTip {
         let desc = match &self.snap.state {
