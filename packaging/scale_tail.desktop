@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=scale_tail
+Comment=System tray control centre for Tailscale
+Exec=scale_tail
+Icon=scale_tail
+Categories=Network;
+Terminal=false
