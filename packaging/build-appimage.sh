@@ -7,7 +7,8 @@ cargo build --release
 A=target/AppDir
 rm -rf "$A"; mkdir -p "$A/usr/bin"
 cp target/release/scale_tail "$A/usr/bin/"
-cp packaging/scale_tail.desktop packaging/scale_tail.svg "$A/"
+cp packaging/scale_tail.desktop packaging/scale_tail.png "$A/"
+cp packaging/scale_tail.png "$A/.DirIcon"
 cat > "$A/AppRun" <<'RUN'
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"

@@ -21,3 +21,7 @@ To control Tailscale without root: `sudo tailscale set --operator=$USER`.
 ## Build the AppImage
 
     packaging/build-appimage.sh   # needs appimagetool on PATH
+
+## License
+
+MIT, see [LICENSE](LICENSE).
