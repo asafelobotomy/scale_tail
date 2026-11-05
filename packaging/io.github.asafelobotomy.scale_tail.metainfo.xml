@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.asafelobotomy.scale_tail</id>
+  <name>scale_tail</name>
+  <summary>System tray control centre for Tailscale</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.asafelobotomy">
+    <name>asafelobotomy</name>
+  </developer>
+  <description>
+    <p>scale_tail is a small system tray app that wraps the Tailscale command line client, so you can manage your tailnet connection without opening a terminal.</p>
+    <p>From the tray menu you can:</p>
+    <ul>
+      <li>Connect and disconnect Tailscale</li>
+      <li>Choose or clear an exit node</li>
+      <li>Browse peers and copy their IP addresses or DNS names</li>
+      <li>Open the login page when Tailscale needs authentication</li>
+    </ul>
+    <p>It requires the tailscale command to be installed and the tailscaled service to be running.</p>
+  </description>
+  <launchable type="desktop-id">io.github.asafelobotomy.scale_tail.desktop</launchable>
+  <url type="homepage">https://github.com/asafelobotomy/scale_tail</url>
+  <url type="bugtracker">https://github.com/asafelobotomy/scale_tail/issues</url>
+  <categories>
+    <category>Network</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>scale_tail</binary>
+  </provides>
+  <releases>
+    <release version="0.2.2" date="2026-11-05"/>
+  </releases>
+</component>

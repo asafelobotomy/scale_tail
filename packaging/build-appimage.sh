@@ -7,7 +7,10 @@ cargo build --release
 A=target/AppDir
 rm -rf "$A"; mkdir -p "$A/usr/bin"
 cp target/release/scale_tail "$A/usr/bin/"
-cp packaging/scale_tail.desktop packaging/scale_tail.png "$A/"
+cp packaging/io.github.asafelobotomy.scale_tail.desktop packaging/scale_tail.png "$A/"
+mkdir -p "$A/usr/share/metainfo" "$A/usr/share/applications"
+cp packaging/io.github.asafelobotomy.scale_tail.desktop "$A/usr/share/applications/"
+cp packaging/io.github.asafelobotomy.scale_tail.metainfo.xml "$A/usr/share/metainfo/io.github.asafelobotomy.scale_tail.appdata.xml"
 cp packaging/scale_tail.png "$A/.DirIcon"
 cat > "$A/AppRun" <<'RUN'
 #!/bin/sh

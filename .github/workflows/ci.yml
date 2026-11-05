@@ -16,6 +16,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install appstream (metadata validation)
+        run: sudo apt-get update && sudo apt-get install -y appstream
       - name: Install appimagetool
         run: |
           curl -fL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
