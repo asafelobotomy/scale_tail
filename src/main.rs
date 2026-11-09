@@ -55,7 +55,7 @@ struct RawNode {
     exit_node_option: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct Node {
     name: String,
     dns: String,
@@ -90,7 +90,7 @@ enum State {
     Other(String),
 }
 
-#[derive(Deserialize, Default, Clone, Debug)]
+#[derive(Deserialize, Default, Clone, Debug, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 struct Prefs {
     #[serde(default)]
@@ -113,7 +113,7 @@ impl Prefs {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct Account {
     id: String,
     label: String,
@@ -121,7 +121,7 @@ struct Account {
 }
 
 /// scale_tail's own settings.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct AppSettings {
     autoconnect: bool,
     autostart: bool,
@@ -238,7 +238,7 @@ fn set_autostart(on: bool) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct Snapshot {
     state: State,
     me: Option<Node>,
@@ -264,7 +264,10 @@ async fn ts(args: &[&str]) -> Result<String, String> {
     }
 }
 
-async fn fetch() -> Snapshot {
+/// Tailscale's state. `prev` (when given) supplies the prefs and accounts
+/// instead of asking `tailscale debug prefs` and `switch --list` again: those
+/// change only through our own actions or rarely, so they are re-read less often.
+async fn fetch(prev: Option<&Snapshot>) -> Snapshot {
     // `status --json` exits non-zero in some stopped states but still prints JSON,
     // so parse stdout regardless of exit code.
     let out = Command::new("tailscale")
@@ -297,8 +300,13 @@ async fn fetch() -> Snapshot {
     };
     let mut peers: Vec<Node> = raw.peer.values().map(Node::from).collect();
     peers.sort_by(|a, b| b.online.cmp(&a.online).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
-    let prefs = ts(&["debug", "prefs"]).await.ok().and_then(|o| serde_json::from_str(&o).ok()).unwrap_or_default();
-    let accounts = ts(&["switch", "--list"]).await.map(|o| parse_accounts(&o)).unwrap_or_default();
+    let (prefs, accounts) = match prev {
+        Some(p) => (p.prefs.clone(), p.accounts.clone()),
+        None => (
+            ts(&["debug", "prefs"]).await.ok().and_then(|o| serde_json::from_str(&o).ok()).unwrap_or_default(),
+            ts(&["switch", "--list"]).await.map(|o| parse_accounts(&o)).unwrap_or_default(),
+        ),
+    };
     Snapshot {
         state,
         me: raw.me.as_ref().map(Node::from),
@@ -456,8 +464,10 @@ fn decode_icon(bytes: &[u8]) -> ksni::Icon {
     let mut buf = vec![0; reader.output_buffer_size().expect("png size")];
     let info = reader.next_frame(&mut buf).expect("png frame");
     let data = buf[..info.buffer_size()]
-        .chunks_exact(4)
-        .flat_map(|p| [p[3], p[0], p[1], p[2]])
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|&[r, g, b, a]| [a, r, g, b])
         .collect();
     ksni::Icon { width: info.width as i32, height: info.height as i32, data }
 }
@@ -800,11 +810,12 @@ async fn main() {
         return;
     }
     let (tx, mut rx) = unbounded_channel::<Action>();
-    let first = fetch().await;
+    let first = fetch(None).await;
     if first.app.autoconnect && first.state == State::Stopped {
         perform(Action::Connect).await;
     }
-    let tray = TsTray { snap: fetch().await, update: None, tx };
+    let mut last = fetch(None).await;
+    let tray = TsTray { snap: last.clone(), update: None, tx: tx.clone() };
     let handle = match tray.spawn().await {
         Ok(h) => h,
         Err(e) => {
@@ -816,11 +827,19 @@ async fn main() {
     let mut tick = tokio::time::interval(Duration::from_secs(5));
     let mut update_tick = tokio::time::interval(Duration::from_secs(6 * 60 * 60)); // first tick fires at startup
     let mut notified: Option<String> = None;
+    // Prefs and accounts are re-read every FULL_EVERY ticks, and after any action.
+    const FULL_EVERY: u32 = 6;
+    let mut ticks: u32 = 0;
     loop {
         let mut refresh = false;
+        let mut full = false;
         let mut check: Option<bool> = None;
         tokio::select! {
-            _ = tick.tick() => refresh = true,
+            _ = tick.tick() => {
+                refresh = true;
+                ticks = ticks.wrapping_add(1);
+                full = ticks.is_multiple_of(FULL_EVERY);
+            }
             _ = update_tick.tick() => {
                 if load_settings().update_check { check = Some(false); }
             }
@@ -828,7 +847,17 @@ async fn main() {
                 match a {
                     Action::Quit => { handle.shutdown().await; return; }
                     Action::CheckUpdates(manual) => check = Some(manual),
-                    a => { perform(a).await; refresh = true; }
+                    // An action finished (see below): refresh everything.
+                    Action::Refresh => { refresh = true; full = true; }
+                    // Run actions off the loop, so a file picker or a ping never
+                    // stalls the tray; each one asks for a refresh when it is done.
+                    a => {
+                        let done = tx.clone();
+                        tokio::spawn(async move {
+                            perform(a).await;
+                            let _ = done.send(Action::Refresh);
+                        });
+                    }
                 }
             }
         }
@@ -855,8 +884,12 @@ async fn main() {
             }
         }
         if refresh {
-            let snap = fetch().await;
-            handle.update(move |t: &mut TsTray| t.snap = snap).await;
+            let snap = fetch(if full { None } else { Some(&last) }).await;
+            // Only touch the tray (a D-Bus menu rebuild) when something changed.
+            if snap != last {
+                last = snap.clone();
+                handle.update(move |t: &mut TsTray| t.snap = snap).await;
+            }
         }
     }
 }
