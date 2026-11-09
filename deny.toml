@@ -1,0 +1,5 @@
+# cargo-deny: dependency advisories (CI runs `cargo deny check advisories`).
+[advisories]
+# The zbus 5 family (zvariant, zvariant_derive, zbus_names) is flagged unmaintained, with no
+# vulnerability. It comes in through the tray library (ksni); remove once ksni moves to zbus 6.
+ignore = ["RUSTSEC-2026-0370", "RUSTSEC-2026-0371", "RUSTSEC-2026-0372"]
