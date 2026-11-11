@@ -279,7 +279,45 @@ Item {
             loader.source = root.pageUrl;
             loader.item.ctx = fake.ctx;
             tryVerify(() => root.findLabel("Couldn't read Tailscale's state") !== null);
+            verify(root.findLabel("Checking…") === null, "one state at a time");
+            // The raw error is behind Advanced details.
+            verify(root.findLabel("timed out") === null);
+            root.named("advanced").clicked();
             tryVerify(() => root.findLabel("timed out") !== null);
+        }
+
+        function test_exit_picker_keeps_its_row_when_labels_change() {
+            const active = { name: "vps", target: "vps.tail1234.ts.net", online: true, active: true };
+            fake.commands.status = root.status("running", { exit_node: active, exit_nodes: [active] });
+            loader.source = "";
+            loader.source = root.pageUrl;
+            loader.item.ctx = fake.ctx;
+            const box = root.named("exitBox");
+            tryVerify(() => box.currentIndex === 1);
+            // The node goes offline: its label changes, the index must stay on it.
+            const gone = Object.assign({}, active, { online: false });
+            fake.commands.status = root.status("running", { exit_node: gone, exit_nodes: [gone] });
+            loader.item.readStatus(false);
+            tryVerify(() => box.model[1] === "vps (offline)");
+            compare(box.currentIndex, 1);
+        }
+
+        function test_read_collision_keeps_the_state() {
+            tryVerify(() => root.findLabel("Off") !== null);
+            fake.commands.status = { error: "already running" };
+            loader.item.readStatus(false);
+            wait(100);
+            verify(root.findLabel("Off") !== null, "the shown state stays");
+            verify(root.findLabel("Couldn't read Tailscale's state") === null);
+        }
+
+        function test_failed_devices_read_is_said() {
+            fake.commands.status = root.status("running");
+            fake.commands.peers = { error: "timed out" };
+            loader.source = "";
+            loader.source = root.pageUrl;
+            loader.item.ctx = fake.ctx;
+            tryVerify(() => root.findLabel("Couldn't read the devices or settings. Use Refresh to try again.") !== null);
         }
 
         function test_untrusted_peer_name_plain() {

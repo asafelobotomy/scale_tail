@@ -34,6 +34,9 @@ var STRINGS = {
     signInTerminal: "In a terminal, run: tailscale up. Then open the link it prints.",
     notRunning: "Tailscale isn't running.",
     readFailed: "Couldn't read Tailscale's state",
+    readFailedDetail: "Tailscale didn't answer. Details are under Advanced details.",
+    detailFailed: "Couldn't read the devices or settings. Use Refresh to try again.",
+    busyState: "Tailscale is starting or busy.",
     working: "Working…",
     changeFailed: "Couldn't change that: ",
     noExitNode: "None",
@@ -161,8 +164,21 @@ function stateLine(status) {
     case "unavailable":
         return STRINGS.notRunning;
     default:
-        return status.message !== "" ? cut(status.message) : cut(status.state);
+        return STRINGS.busyState;
     }
+}
+
+/// The raw text behind an unusual state, for Advanced details: what scale_tail said when
+/// Tailscale isn't running or is in a state this page doesn't know. "" when there is none.
+function rawOf(status) {
+    if (!status || !status.ok || status.state === "running" || status.state === "stopped" || status.state === "needs_login")
+        return "";
+    return status.message !== "" ? cut(status.message) : cut(status.state);
+}
+
+/// Whether uQ refused a read because the same command was still running.
+function isBusyAnswer(result) {
+    return !!result && typeof result.error === "string" && /already running/i.test(result.error);
 }
 
 /// The switch may be used only when Tailscale can be turned on or off. `up` is never run

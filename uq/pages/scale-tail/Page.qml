@@ -24,23 +24,37 @@ Item {
     // Why the last change failed, or the operator hint; "" when there is nothing to say.
     property string problem: ""
     property bool detailsShown: false
+    // Set when the page is being destroyed: answers that arrive later are dropped.
+    property bool dead: false
+    // A read found another one still running: read everything again after the next answer.
+    property bool wantAll: false
 
     readonly property var exitInfo: Logic.exitChoices(page.status)
     readonly property string signInUrl: Logic.signInUrl(page.status)
     readonly property bool usable: Logic.canToggle(page.status) && !page.busy
+    // The raw text behind a failed or unusual state, shown only under Advanced details.
+    readonly property string rawText: page.statusError !== "" ? page.statusError : Logic.rawOf(page.status)
     readonly property var colors: page.ctx && page.ctx.theme && page.ctx.theme.colors ? page.ctx.theme.colors : ({})
 
     function readStatus(everything) {
         if (!page.ctx)
             return;
         page.ctx.command.run("status", [], function (result) {
+            if (page.dead || !Logic)
+                return;
             page.gotStatus(result, everything);
         });
     }
 
     function gotStatus(result, everything) {
+        // The same read was still running: keep what is shown and read again after the next one.
+        if (Logic.isBusyAnswer(result)) {
+            page.wantAll = page.wantAll || everything;
+            return;
+        }
         const next = Logic.parseStatus(result);
-        const reread = everything || Logic.stateChanged(page.status, next);
+        const reread = everything || page.wantAll || Logic.stateChanged(page.status, next);
+        page.wantAll = false;
         // Only a real change replaces what is shown, so a poll that finds nothing new leaves
         // the picker (and a list that is open) alone.
         const shown = next.ok ? next : null;
@@ -55,6 +69,8 @@ Item {
 
     function readPeers() {
         page.ctx.command.run("peers", [], function (result) {
+            if (page.dead || !Logic || Logic.isBusyAnswer(result))
+                return;
             const next = Logic.parsePeers(result);
             if (!Logic.same(page.peers, next))
                 page.peers = next;
@@ -63,6 +79,8 @@ Item {
 
     function readPrefs() {
         page.ctx.command.run("prefs", [], function (result) {
+            if (page.dead || !Logic || Logic.isBusyAnswer(result))
+                return;
             const next = Logic.parsePrefs(result);
             if (!Logic.same(page.prefs, next))
                 page.prefs = next;
@@ -72,11 +90,15 @@ Item {
     // Run one change, then read everything again. A switch or the picker keeps showing what was
     // last read until then, so a refused change goes back, with the reason shown below.
     function act(id, args) {
-        if (!page.ctx || page.busy)
+        // Nothing changes while Tailscale can't be switched (no login, not running), whatever
+        // the controls say: `up` in particular would wait for a browser login.
+        if (!page.ctx || page.busy || !Logic.canToggle(page.status))
             return;
         page.busy = true;
         page.problem = "";
         page.ctx.command.run(id, args, function (result) {
+            if (page.dead || !Logic)
+                return;
             page.busy = false;
             page.problem = Logic.writeProblem(result);
             // Cancelling a question changes nothing, so there is nothing to read again.
@@ -104,6 +126,8 @@ Item {
         const y = row.mapToItem(column, 0, 0).y;
         flick.contentY = Math.max(0, Math.min(y - 8, flick.contentHeight - flick.height));
     }
+
+    Component.onDestruction: page.dead = true
 
     onHighlightChanged: Qt.callLater(() => page.reveal(page.highlight))
 
@@ -134,6 +158,7 @@ Item {
             spacing: 12
 
             UqLabel {
+                visible: page.statusError === ""
                 text: Logic.stateLine(page.status)
                 font.bold: true
                 wrapMode: Text.Wrap
@@ -142,23 +167,31 @@ Item {
             ErrorCard {
                 visible: page.statusError !== ""
                 title: Logic.STRINGS.readFailed
-                detail: page.statusError
+                detail: Logic.STRINGS.readFailedDetail
                 Layout.fillWidth: true
             }
             QQC2.Button {
-                visible: !!page.status && page.status.state === "unavailable" && page.status.message !== ""
+                objectName: "advanced"
+                visible: page.rawText !== ""
                 text: "Advanced details"
                 onClicked: page.detailsShown = !page.detailsShown
             }
             UqLabel {
-                visible: page.detailsShown && !!page.status && page.status.state === "unavailable"
-                text: page.status ? page.status.message : ""
+                visible: page.detailsShown && page.rawText !== ""
+                text: page.rawText
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
             UqLabel {
                 visible: page.busy
                 text: Logic.STRINGS.working
+                Layout.fillWidth: true
+            }
+            UqLabel {
+                visible: Logic.canToggle(page.status) && ((!!page.peers && page.peers.ok === false) || (!!page.prefs && page.prefs.ok === false))
+                text: Logic.STRINGS.detailFailed
+                color: page.colors.error || "red"
+                wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
             UqLabel {
@@ -231,6 +264,8 @@ Item {
                     enabled: page.usable
                     model: page.exitInfo.labels
                     currentIndex: page.exitInfo.index
+                    // A new list resets the index to the first row: put the one in use back.
+                    onModelChanged: currentIndex = Qt.binding(() => page.exitInfo.index)
                     implicitWidth: 220
                     onActivated: index => page.pickExit(index)
                 }

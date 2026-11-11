@@ -44,6 +44,15 @@ jobs:
         run: node --test tests/uq/*.test.mjs
       - name: Widget and page tests (QML)
         run: QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -import tests/uq/stub -input tests/uq
+      # The PKGBUILD installs every file of each uq/pages/<id>/ folder: run its own function into a
+      # temporary root and compare with the folder.
+      - name: Packaging installs the whole page folder
+        run: |
+          root=$(mktemp -d)
+          eval "$(sed -n '/^_install_uq_folders()/,/^}/p' packaging/aur/PKGBUILD)"
+          _install_uq_folders uq/pages "$root/usr/share/uq/settings/pages"
+          diff <(ls uq/pages/scale-tail) <(ls "$root/usr/share/uq/settings/pages/scale-tail")
+          test "$(ls "$root/usr/share/uq/settings/pages" | wc -l)" = 1
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: stable

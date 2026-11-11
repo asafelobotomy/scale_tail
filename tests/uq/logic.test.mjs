@@ -160,6 +160,17 @@ test("same_and_state_changes", () => {
     assert.equal(L.stateChanged(a, L.parseStatus({ error: "x" })), true);
 });
 
+test("busy_answers_and_raw_text", () => {
+    assert.equal(L.isBusyAnswer({ error: "already running" }), true);
+    assert.equal(L.isBusyAnswer({ error: "timed out" }), false);
+    assert.equal(L.isBusyAnswer(undefined), false);
+    const other = L.parseStatus({ output: { version: 1, state: "other", message: "Starting" } });
+    assert.equal(L.stateLine(other), L.STRINGS.busyState);
+    assert.equal(L.rawOf(other), "Starting");
+    assert.equal(L.rawOf(L.parseStatus({ output: statusOut })), "");
+    assert.equal(L.rawOf(null), "");
+});
+
 test("peers_are_capped_and_cut", () => {
     const Peer = {};
     for (let i = 0; i < 500; i++) Peer["k" + i] = { HostName: "h" + String(i).padStart(3, "0"), Online: true, OS: "linux" };
