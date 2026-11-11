@@ -1,0 +1,54 @@
+# scale_tail's quick-settings tile for the uQ desktop: Tailscale on/off, the current exit node,
+# and an exit-node picker in the tile's detail view. Installed to
+# /usr/share/uq/shell/widgets/scale-tail/ by scale_tail's package; inert without uQ.
+# Reference: docs/integrating.md in the uQ repository.
+uq_api = 1
+id = "scale-tail"
+name = "Tailscale"
+slot = "quick"
+qml = "Widget.qml"
+order = 40
+
+[requires]
+bins = ["scale_tail", "tailscale"]
+
+# A small summary of `tailscale status --json` (scale_tail's own format, see README.md):
+# {version, state, connected, message, tailnet, self, exit_node, exit_nodes[]}.
+[[command]]
+id = "status"
+argv = ["/usr/bin/scale_tail", "status", "--json"]
+output = "json"
+timeout_ms = 5000
+
+# Without root these need `tailscale set --operator=$USER` once (run as root); the error says so.
+[[command]]
+id = "up"
+argv = ["/usr/bin/tailscale", "up"]
+output = "none"
+timeout_ms = 30000
+
+[[command]]
+id = "down"
+argv = ["/usr/bin/tailscale", "down"]
+output = "none"
+timeout_ms = 15000
+
+# `tailscale set --exit-node <target>`: a peer's MagicDNS name or Tailscale IP from `status`.
+[[command]]
+id = "exit-node"
+argv = ["/usr/bin/tailscale", "set", "--exit-node"]
+output = "none"
+timeout_ms = 15000
+args = [{ name = "target", pattern = "^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$" }]
+
+[[command]]
+id = "exit-node-suggested"
+argv = ["/usr/bin/tailscale", "set", "--exit-node=auto:any"]
+output = "none"
+timeout_ms = 15000
+
+[[command]]
+id = "exit-node-none"
+argv = ["/usr/bin/tailscale", "set", "--exit-node="]
+output = "none"
+timeout_ms = 15000

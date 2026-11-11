@@ -26,6 +26,21 @@ jobs:
         with:
           command: check advisories
 
+  uq-widget:
+    name: uQ widget (QML)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Qt Quick and qmltestrunner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-declarative-dev-tools \
+            qml6-module-qtquick qml6-module-qtquick-layouts qml6-module-qttest
+      # `uqctl integrations check uq/` is not run here yet: no uQ release ships it (it lands in
+      # uQ 0.4.0), and building uqctl from source pulls in all of uQ. Run it locally until then.
+      - name: Widget test
+        run: QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/uq/tst_widget.qml
+
   appimage:
     runs-on: ubuntu-22.04   # older glibc => wider AppImage compatibility
     permissions:
