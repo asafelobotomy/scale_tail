@@ -10,7 +10,8 @@ System-tray control centre for the Tailscale CLI, in Rust (single crate, StatusN
 
 ## Layout
 - `src/main.rs`: the whole app.
-- `packaging/`: `build-appimage.sh`, desktop file, AppStream metainfo, icons (`gen_icons.py` generates them), SVGs.
+- `packaging/`: `build-appimage.sh`, desktop file, AppStream metainfo, icons (`gen_icons.py` generates them), SVGs. `packaging/aur/`: PKGBUILD and .SRCINFO (release tarball; regenerate .SRCINFO after edits).
+- `uq/`: uQ desktop integration (quick-settings widget), installed to `/usr/share/uq/` by the PKGBUILD. Check with `uqctl integrations check uq/`; `tests/uq/tst_widget.qml` tests the widget (`QT_QPA_PLATFORM=offscreen qmltestrunner -input tests/uq/tst_widget.qml`).
 
 ## Conventions
 - Rust edition 2024, MIT. Work on `main`.  `Cargo.lock` is committed.

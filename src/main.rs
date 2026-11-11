@@ -227,15 +227,54 @@ fn set_autostart(on: bool) -> Result<(), String> {
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::current_exe().ok())
         .ok_or("cannot determine executable path")?;
-    let exe = exe.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
     std::fs::create_dir_all(f.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(
-        &f,
-        format!(
-            "[Desktop Entry]\nType=Application\nName=scale_tail\nComment=System tray control centre for Tailscale\nExec=\"{exe}\"\nIcon=scale_tail\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
-        ),
+    std::fs::write(&f, autostart_entry(&exe.to_string_lossy())).map_err(|e| e.to_string())
+}
+
+/// The autostart entry. `NotShowIn=uQ;`: under the uQ desktop, Tailscale lives in
+/// quick settings and the Settings app instead (uq/), so the tray is not started.
+fn autostart_entry(exe: &str) -> String {
+    let exe = exe.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        "[Desktop Entry]\nType=Application\nName=scale_tail\nComment=System tray control centre for Tailscale\nExec=\"{exe}\"\nIcon=scale_tail\nTerminal=false\nNotShowIn=uQ;\nX-GNOME-Autostart-enabled=true\n"
     )
-    .map_err(|e| e.to_string())
+}
+
+/// An autostart entry written before `NotShowIn=uQ;` existed, with that line added;
+/// `None` when the entry already says where it shows.
+fn autostart_with_not_show_in(entry: &str) -> Option<String> {
+    if entry.lines().any(|l| l.starts_with("NotShowIn=") || l.starts_with("OnlyShowIn=")) {
+        return None;
+    }
+    let mut out = String::with_capacity(entry.len() + 16);
+    for line in entry.lines() {
+        out.push_str(line);
+        out.push('\n');
+        if line.trim() == "[Desktop Entry]" {
+            out.push_str("NotShowIn=uQ;\n");
+        }
+    }
+    Some(out)
+}
+
+/// Adds `NotShowIn=uQ;` to an existing autostart entry from an older version.
+fn migrate_autostart() {
+    let f = autostart_file();
+    if let Some(new) = std::fs::read_to_string(&f).ok().and_then(|t| autostart_with_not_show_in(&t)) {
+        let _ = std::fs::write(&f, new);
+    }
+}
+
+/// Whether the uQ desktop runs in this session (its daemon owns `org.uq.Desktop1`).
+/// uQ shows Tailscale in quick settings and Settings, so the tray stays off there.
+async fn uq_running() -> bool {
+    let check = async {
+        let conn = zbus::Connection::session().await.ok()?;
+        let dbus = zbus::fdo::DBusProxy::new(&conn).await.ok()?;
+        let name = zbus::names::BusName::try_from("org.uq.Desktop1").ok()?;
+        dbus.name_has_owner(name).await.ok()
+    };
+    tokio::time::timeout(Duration::from_secs(2), check).await.ok().flatten().unwrap_or(false)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -264,33 +303,28 @@ async fn ts(args: &[&str]) -> Result<String, String> {
     }
 }
 
-/// Tailscale's state. `prev` (when given) supplies the prefs and accounts
-/// instead of asking `tailscale debug prefs` and `switch --list` again: those
-/// change only through our own actions or rarely, so they are re-read less often.
-async fn fetch(prev: Option<&Snapshot>) -> Snapshot {
-    // `status --json` exits non-zero in some stopped states but still prints JSON,
-    // so parse stdout regardless of exit code.
-    let out = Command::new("tailscale")
-        .args(["status", "--json"])
-        .stdin(Stdio::null())
-        .output()
-        .await;
-    let fail = |msg: String| Snapshot {
-        state: State::Unavailable(msg),
-        me: None,
-        tailnet: String::new(),
-        peers: vec![],
-        prefs: Prefs::default(),
-        accounts: vec![],
-        app: load_settings(),
-    };
-    let out = match out {
-        Ok(o) => o,
-        Err(e) => return fail(format!("tailscale CLI not found: {e}")),
-    };
-    let raw: RawStatus = match serde_json::from_slice(&out.stdout) {
+/// What `tailscale status --json` says, without the prefs and accounts.
+#[derive(Clone, Debug, PartialEq)]
+struct Status {
+    state: State,
+    me: Option<Node>,
+    tailnet: String,
+    peers: Vec<Node>,
+}
+
+/// Reads one `tailscale status --json` run. It exits non-zero in some stopped
+/// states but still prints JSON, so stdout is parsed regardless of the exit code.
+fn parse_status(stdout: &[u8], stderr: &[u8]) -> Status {
+    let raw: RawStatus = match serde_json::from_slice(stdout) {
         Ok(r) => r,
-        Err(_) => return fail(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+        Err(_) => {
+            return Status {
+                state: State::Unavailable(String::from_utf8_lossy(stderr).trim().to_string()),
+                me: None,
+                tailnet: String::new(),
+                peers: vec![],
+            };
+        }
     };
     let state = match raw.backend_state.as_str() {
         "Running" => State::Running,
@@ -300,6 +334,24 @@ async fn fetch(prev: Option<&Snapshot>) -> Snapshot {
     };
     let mut peers: Vec<Node> = raw.peer.values().map(Node::from).collect();
     peers.sort_by(|a, b| b.online.cmp(&a.online).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    Status { state, me: raw.me.as_ref().map(Node::from), tailnet: raw.current_tailnet.map(|t| t.name).unwrap_or_default(), peers }
+}
+
+async fn fetch_status() -> Status {
+    match Command::new("tailscale").args(["status", "--json"]).stdin(Stdio::null()).output().await {
+        Ok(o) => parse_status(&o.stdout, &o.stderr),
+        Err(e) => Status { state: State::Unavailable(format!("tailscale CLI not found: {e}")), me: None, tailnet: String::new(), peers: vec![] },
+    }
+}
+
+/// Tailscale's state. `prev` (when given) supplies the prefs and accounts
+/// instead of asking `tailscale debug prefs` and `switch --list` again: those
+/// change only through our own actions or rarely, so they are re-read less often.
+async fn fetch(prev: Option<&Snapshot>) -> Snapshot {
+    let Status { state, me, tailnet, peers } = fetch_status().await;
+    if let State::Unavailable(_) = state {
+        return Snapshot { state, me, tailnet, peers, prefs: Prefs::default(), accounts: vec![], app: load_settings() };
+    }
     let (prefs, accounts) = match prev {
         Some(p) => (p.prefs.clone(), p.accounts.clone()),
         None => (
@@ -307,15 +359,37 @@ async fn fetch(prev: Option<&Snapshot>) -> Snapshot {
             ts(&["switch", "--list"]).await.map(|o| parse_accounts(&o)).unwrap_or_default(),
         ),
     };
-    Snapshot {
-        state,
-        me: raw.me.as_ref().map(Node::from),
-        tailnet: raw.current_tailnet.map(|t| t.name).unwrap_or_default(),
-        peers,
-        prefs,
-        accounts,
-        app: load_settings(),
-    }
+    Snapshot { state, me, tailnet, peers, prefs, accounts, app: load_settings() }
+}
+
+/// The address `tailscale set --exit-node` takes for a peer (as the tray menu uses).
+fn exit_target(n: &Node) -> String {
+    if n.dns.is_empty() { n.ip.clone() } else { n.dns.clone() }
+}
+
+/// `scale_tail status --json`: a small, stable summary for scripts and the uQ
+/// widget (uq/widgets/scale-tail), so they need not read `tailscale status --json`.
+fn status_json(s: &Status) -> serde_json::Value {
+    use serde_json::json;
+    let (state, message) = match &s.state {
+        State::Running => ("running", String::new()),
+        State::Stopped => ("stopped", String::new()),
+        State::NeedsLogin(url) => ("needs_login", url.clone()),
+        State::Unavailable(e) => ("unavailable", e.clone()),
+        State::Other(o) => ("other", o.clone()),
+    };
+    let exits: Vec<&Node> = s.peers.iter().filter(|p| p.can_exit).collect();
+    let node = |p: &Node| json!({ "name": p.name, "target": exit_target(p), "online": p.online, "active": p.is_exit });
+    json!({
+        "version": 1,
+        "state": state,
+        "connected": s.state == State::Running,
+        "message": message,
+        "tailnet": s.tailnet,
+        "self": s.me.as_ref().map(|m| json!({ "name": m.name, "dns": m.dns, "ip": m.ip })),
+        "exit_node": exits.iter().find(|p| p.is_exit).map(|p| node(p)),
+        "exit_nodes": exits.iter().map(|p| node(p)).collect::<Vec<_>>(),
+    })
 }
 
 /// Parses `tailscale switch --list` (header row, then `ID  Tailnet  Account[*]`).
@@ -508,7 +582,7 @@ impl TsTray {
             });
         }
         let targets: Vec<Option<String>> = std::iter::once(None)
-            .chain(exits.iter().map(|p| Some(if p.dns.is_empty() { p.ip.clone() } else { p.dns.clone() })))
+            .chain(exits.iter().map(|p| Some(exit_target(p))))
             .collect();
         let tx = self.tx.clone();
 
@@ -803,12 +877,49 @@ impl ksni::Tray for TsTray {
     }
 }
 
+const USAGE: &str = "usage: scale_tail [--tray]       start the tray (--tray: even under uQ)
+       scale_tail status --json   print Tailscale's state as JSON and exit
+       scale_tail --version";
+
+#[derive(Debug, PartialEq)]
+enum Cli {
+    Tray { force: bool },
+    StatusJson,
+}
+
+fn cli_command(args: &[String]) -> Result<Cli, String> {
+    // Other arguments are ignored, as they always were, so existing launchers keep working.
+    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        ["status", "--json"] => Ok(Cli::StatusJson),
+        ["status", ..] => Err("status needs --json".into()),
+        _ => Ok(Cli::Tray { force: args.iter().any(|a| a == "--tray") }),
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    if std::env::args().any(|a| a == "--version" || a == "-V") {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("scale_tail {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    match cli_command(&args) {
+        Ok(Cli::Tray { force }) => {
+            if !force && uq_running().await {
+                eprintln!("scale_tail: uQ is running and shows Tailscale in quick settings; not starting the tray (use --tray to start it anyway)");
+                return;
+            }
+        }
+        Ok(Cli::StatusJson) => {
+            println!("{}", status_json(&fetch_status().await));
+            return;
+        }
+        Err(e) => {
+            eprintln!("scale_tail: {e}\n\n{USAGE}");
+            std::process::exit(2);
+        }
+    }
+    migrate_autostart();
     let (tx, mut rx) = unbounded_channel::<Action>();
     let first = fetch(None).await;
     if first.app.autoconnect && first.state == State::Stopped {
@@ -891,5 +1002,103 @@ async fn main() {
                 handle.update(move |t: &mut TsTray| t.snap = snap).await;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Trimmed from real `tailscale status --json` output.
+    const STATUS: &str = r#"{
+        "BackendState": "Running",
+        "AuthURL": "",
+        "Self": {"HostName": "laptop", "DNSName": "laptop.tail1234.ts.net.", "OS": "linux",
+                 "TailscaleIPs": ["100.64.0.1", "fd7a::1"], "Online": true},
+        "CurrentTailnet": {"Name": "example.com"},
+        "Peer": {
+            "nodekey:a": {"HostName": "vps", "DNSName": "vps.tail1234.ts.net.", "OS": "linux",
+                          "TailscaleIPs": ["100.64.0.2"], "Online": true,
+                          "ExitNode": true, "ExitNodeOption": true},
+            "nodekey:b": {"HostName": "home", "DNSName": "", "OS": "linux",
+                          "TailscaleIPs": ["100.64.0.3"], "Online": false,
+                          "ExitNode": false, "ExitNodeOption": true},
+            "nodekey:c": {"HostName": "phone", "DNSName": "phone.tail1234.ts.net.", "OS": "android",
+                          "TailscaleIPs": ["100.64.0.4"], "Online": true}
+        }
+    }"#;
+
+    #[test]
+    fn status_json_running_with_exit_node() {
+        let v = status_json(&parse_status(STATUS.as_bytes(), b""));
+        assert_eq!(v["version"], 1);
+        assert_eq!(v["state"], "running");
+        assert_eq!(v["connected"], true);
+        assert_eq!(v["tailnet"], "example.com");
+        assert_eq!(v["self"]["name"], "laptop");
+        assert_eq!(v["self"]["dns"], "laptop.tail1234.ts.net");
+        assert_eq!(v["self"]["ip"], "100.64.0.1");
+        assert_eq!(v["exit_node"]["name"], "vps");
+        assert_eq!(v["exit_node"]["target"], "vps.tail1234.ts.net");
+        // Only exit-node options, online first; a peer without a DNS name is reached by IP.
+        let exits = v["exit_nodes"].as_array().unwrap();
+        assert_eq!(exits.len(), 2);
+        assert_eq!(exits[0]["name"], "vps");
+        assert_eq!(exits[0]["active"], true);
+        assert_eq!(exits[1]["name"], "home");
+        assert_eq!(exits[1]["target"], "100.64.0.3");
+        assert_eq!(exits[1]["online"], false);
+        assert_eq!(exits[1]["active"], false);
+    }
+
+    #[test]
+    fn status_json_stopped_and_needs_login() {
+        let v = status_json(&parse_status(br#"{"BackendState":"Stopped"}"#, b""));
+        assert_eq!(v["state"], "stopped");
+        assert_eq!(v["connected"], false);
+        assert!(v["exit_node"].is_null());
+        assert!(v["self"].is_null());
+        assert_eq!(v["exit_nodes"].as_array().unwrap().len(), 0);
+
+        let v = status_json(&parse_status(br#"{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/x"}"#, b""));
+        assert_eq!(v["state"], "needs_login");
+        assert_eq!(v["message"], "https://login.tailscale.com/a/x");
+    }
+
+    #[test]
+    fn status_json_unavailable_keeps_stderr() {
+        let v = status_json(&parse_status(b"", b"failed to connect to local tailscaled\n"));
+        assert_eq!(v["state"], "unavailable");
+        assert_eq!(v["connected"], false);
+        assert_eq!(v["message"], "failed to connect to local tailscaled");
+    }
+
+    #[test]
+    fn cli_parsing() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(cli_command(&a(&[])), Ok(Cli::Tray { force: false }));
+        assert_eq!(cli_command(&a(&["--tray"])), Ok(Cli::Tray { force: true }));
+        assert_eq!(cli_command(&a(&["status", "--json"])), Ok(Cli::StatusJson));
+        assert!(cli_command(&a(&["status"])).is_err());
+        assert!(cli_command(&a(&["status", "--text"])).is_err());
+        // Unknown arguments start the tray, as before.
+        assert_eq!(cli_command(&a(&["--whatever"])), Ok(Cli::Tray { force: false }));
+    }
+
+    #[test]
+    fn autostart_entry_is_off_under_uq() {
+        let e = autostart_entry("/opt/My \"Apps\"/scale_tail");
+        assert!(e.lines().any(|l| l == "NotShowIn=uQ;"));
+        assert!(e.contains(r#"Exec="/opt/My \"Apps\"/scale_tail""#));
+        assert_eq!(autostart_with_not_show_in(&e), None);
+    }
+
+    #[test]
+    fn old_autostart_entry_gains_not_show_in() {
+        let old = "[Desktop Entry]\nType=Application\nName=scale_tail\nExec=\"/usr/bin/scale_tail\"\n";
+        let new = autostart_with_not_show_in(old).unwrap();
+        assert_eq!(new, "[Desktop Entry]\nNotShowIn=uQ;\nType=Application\nName=scale_tail\nExec=\"/usr/bin/scale_tail\"\n");
+        assert_eq!(autostart_with_not_show_in(&new), None);
+        assert_eq!(autostart_with_not_show_in("[Desktop Entry]\nOnlyShowIn=KDE;\n"), None);
     }
 }

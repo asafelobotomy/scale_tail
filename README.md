@@ -22,6 +22,22 @@ Download the AppImage from the latest CI run / release, or:
 Runtime needs: `tailscale`, `libnotify` (notify-send), `xdg-utils`, and `wl-clipboard` or `xclip`, and `zenity` for sending files.
 To control Tailscale without root: `sudo tailscale set --operator=$USER`.
 
+## Arch Linux
+
+`packaging/aur/PKGBUILD` builds a release tarball and installs `scale_tail`, its desktop entry and
+the uQ integration below.
+
+## uQ desktop
+
+On the [uQ desktop](https://github.com/asafelobotomy/uq), Tailscale lives in quick settings
+instead of the tray: a tile with an on/off switch, the current exit node and an exit-node picker
+(`uq/`, see [uq/README.md](uq/README.md)). The tray is not started there: the autostart entry
+says `NotShowIn=uQ;`, and `scale_tail` exits when uQ is running (`scale_tail --tray` starts it
+anyway).
+
+`scale_tail status --json` prints a small summary of Tailscale's state (state, exit node, exit-node
+options) for scripts.
+
 ## Build the AppImage
 
     packaging/build-appimage.sh   # needs appimagetool on PATH

@@ -591,6 +591,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "ureq",
+ "zbus",
 ]
 
 [[package]]
