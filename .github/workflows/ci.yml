@@ -27,20 +27,48 @@ jobs:
           command: check advisories
 
   uq-widget:
-    name: uQ widget (QML)
+    name: uQ integration (widget, page, check)
     runs-on: ubuntu-24.04
+    env:
+      UQ_TAG: v0.3.0-rc.1   # the uQ release whose `uqctl` and settings page test kit this repo follows
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Qt Quick and qmltestrunner
         run: |
           sudo apt-get update
           sudo apt-get install -y qt6-declarative-dev-tools \
-            qml6-module-qtquick qml6-module-qtquick-layouts qml6-module-qttest qml6-module-qtqml-workerscript \
+            qml6-module-qtquick qml6-module-qtquick-layouts qml6-module-qtquick-controls \
+            qml6-module-qttest qml6-module-qtqml-workerscript \
             qml6-module-qtquick-window qml6-module-qtquick-templates
-      # `uqctl integrations check uq/` is not run here yet: no uQ release ships it (it lands in
-      # uQ 0.4.0), and building uqctl from source pulls in all of uQ. Run it locally until then.
-      - name: Widget test
-        run: QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/uq/tst_widget.qml
+      - name: Page logic and manifest tests (Node)
+        run: node --test tests/uq/*.test.mjs
+      - name: Widget and page tests (QML)
+        run: QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -import tests/uq/stub -input tests/uq
+      # The PKGBUILD installs every file of each uq/pages/<id>/ folder: run its own function into a
+      # temporary root and compare with the folder.
+      - name: Packaging installs the whole page folder
+        run: |
+          root=$(mktemp -d)
+          eval "$(sed -n '/^_install_uq_folders()/,/^}/p' packaging/aur/PKGBUILD)"
+          _install_uq_folders uq/pages "$root/usr/share/uq/settings/pages"
+          diff <(ls uq/pages/scale-tail) <(ls "$root/usr/share/uq/settings/pages/scale-tail")
+          test "$(ls "$root/usr/share/uq/settings/pages" | wc -l)" = 1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - name: Cache uqctl
+        id: uqctl
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.uq
+          key: uqctl-${{ env.UQ_TAG }}
+      - name: Build uqctl
+        if: steps.uqctl.outputs.cache-hit != 'true'
+        run: cargo install --locked --git https://github.com/asafelobotomy/uq --tag "$UQ_TAG" uqctl --root "$HOME/.uq"
+      # `--no-programs` skips only the "program exists" check: scale_tail and tailscale aren't
+      # installed here. Paths and everything else are still checked.
+      - name: uQ integration check
+        run: ~/.uq/bin/uqctl integrations check --no-programs uq/
 
   appimage:
     runs-on: ubuntu-22.04   # older glibc => wider AppImage compatibility

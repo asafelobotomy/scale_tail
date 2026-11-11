@@ -1,0 +1,125 @@
+# scale_tail's Tailscale page for uQ Settings (Apps > Tailscale). Installed to
+# /usr/share/uq/settings/pages/scale-tail/ by scale_tail's package; inert without uQ.
+# Reference: docs/settings-pages.md in the uQ repository.
+uq_api = 1
+id = "scale-tail"
+name = "Tailscale"
+icon = "network-vpn"
+qml = "Page.qml"
+keywords = ["tailscale", "vpn", "exit node", "network", "peers"]
+
+[requires]
+bins = ["tailscale", "scale_tail"]
+
+[[setting]]
+id = "connection"
+label = "Tailscale connection"
+keywords = ["connect", "disconnect", "on", "off", "vpn", "sign in", "login"]
+
+[[setting]]
+id = "exit-node"
+label = "Exit node"
+keywords = ["exit", "route all traffic", "vpn", "relay"]
+
+[[setting]]
+id = "routes"
+label = "Use routes from other devices"
+keywords = ["accept routes", "subnet", "subnet routes", "network"]
+
+[[setting]]
+id = "lan-access"
+label = "Reach the local network while using an exit node"
+keywords = ["lan", "local network", "exit node", "printer"]
+
+[[setting]]
+id = "peers"
+label = "Devices"
+keywords = ["peers", "machines", "tailnet", "online"]
+
+[[setting]]
+id = "account"
+label = "Account"
+keywords = ["login", "user", "sign out", "logout", "tailnet"]
+
+# A small summary of `tailscale status --json` (scale_tail's own format, see uq/README.md):
+# {version, state, connected, message, tailnet, self, exit_node, exit_nodes[]}. It exits 0
+# whenever it prints JSON. tailscaled has no change signal and its state file is root-only, so
+# the page reads this every 5 s while it is shown instead of watching.
+[[command]]
+id = "status"
+argv = ["/usr/bin/scale_tail", "status", "--json"]
+output = "json"
+timeout_ms = 30000
+
+# Tailscale's own status: the devices, and the account at User[Self.UserID].LoginName.
+[[command]]
+id = "peers"
+argv = ["/usr/bin/tailscale", "status", "--json"]
+output = "json"
+timeout_ms = 30000
+
+# The current settings: RouteAll and ExitNodeAllowLANAccess (what `scale_tail` reads, too).
+[[command]]
+id = "prefs"
+argv = ["/usr/bin/tailscale", "debug", "prefs"]
+output = "json"
+timeout_ms = 30000
+
+# Without root the writes below need `tailscale set --operator=$USER` once; the page says so
+# when Tailscale answers "Access denied". `up` is never run while a login is needed.
+[[command]]
+id = "up"
+argv = ["/usr/bin/tailscale", "up"]
+output = "none"
+timeout_ms = 30000
+
+[[command]]
+id = "down"
+argv = ["/usr/bin/tailscale", "down"]
+output = "none"
+timeout_ms = 30000
+
+# `tailscale set --exit-node <target>`: a peer's MagicDNS name or Tailscale IP from `status`.
+[[command]]
+id = "exit-node"
+argv = ["/usr/bin/tailscale", "set", "--exit-node"]
+output = "none"
+timeout_ms = 30000
+args = [{ name = "target", pattern = "^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$" }]
+
+[[command]]
+id = "exit-node-off"
+argv = ["/usr/bin/tailscale", "set", "--exit-node="]
+output = "none"
+timeout_ms = 30000
+
+[[command]]
+id = "routes-on"
+argv = ["/usr/bin/tailscale", "set", "--accept-routes=true"]
+output = "none"
+timeout_ms = 30000
+
+[[command]]
+id = "routes-off"
+argv = ["/usr/bin/tailscale", "set", "--accept-routes=false"]
+output = "none"
+timeout_ms = 30000
+
+[[command]]
+id = "lan-on"
+argv = ["/usr/bin/tailscale", "set", "--exit-node-allow-lan-access=true"]
+output = "none"
+timeout_ms = 30000
+
+[[command]]
+id = "lan-off"
+argv = ["/usr/bin/tailscale", "set", "--exit-node-allow-lan-access=false"]
+output = "none"
+timeout_ms = 30000
+
+[[command]]
+id = "logout"
+argv = ["/usr/bin/tailscale", "logout"]
+output = "none"
+timeout_ms = 30000
+confirm = "Sign out of Tailscale on this computer? You'll need to sign in again in a browser."

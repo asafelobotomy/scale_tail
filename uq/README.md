@@ -7,8 +7,7 @@ unconditionally (`packaging/aur/PKGBUILD`).
 | Path | Installed to | What it adds |
 |---|---|---|
 | `widgets/scale-tail/` | `/usr/share/uq/shell/widgets/scale-tail/` | A **Tailscale** tile in quick settings (Apps group): on/off switch, the current exit node, and an exit-node picker in its detail view |
-
-The Tailscale settings page is added separately.
+| `pages/scale-tail/` | `/usr/share/uq/settings/pages/scale-tail/` | A **Tailscale** page in uQ Settings (Apps): the connection switch, the account with **Sign out…**, the exit-node picker, the "use routes from other devices" and "reach the local network" switches, and the list of devices |
 
 ## How the widget works
 
@@ -38,11 +37,42 @@ Under uQ the tray is not started: the autostart entry carries `NotShowIn=uQ;`, a
 exits at once when `org.uq.Desktop1` has an owner on the session bus (`scale_tail --tray` starts
 it anyway).
 
+## How the settings page works
+
+It is a folder (`page.toml`, `Page.qml`, `logic.js`) and runs only the commands declared in
+`page.toml`, never a shell:
+
+- `scale_tail status --json` every 5 s while the page is shown (tailscaled sends no change
+  signal and its state file is root-only, so there is nothing to watch), `tailscale status --json`
+  for the devices and the account (`User[Self.UserID].LoginName`), and `tailscale debug prefs` for
+  the two switches (`RouteAll`, `ExitNodeAllowLANAccess`). The devices and settings are read when
+  the page opens, after each change, and when the state changes.
+- `tailscale up` / `down`, `tailscale set --exit-node <target>` / `--exit-node=`,
+  `--accept-routes=true|false`, `--exit-node-allow-lan-access=true|false`, and
+  `tailscale logout` (uQ asks first).
+- `tailscale up` is **not** run while Tailscale needs a login: it would wait for a browser until
+  it timed out. The page shows the sign-in link from `status` as text to select, with a
+  **Copy link** button.
+- When Tailscale refuses a change with "Access denied", the page shows: "Tailscale needs you to
+  be its operator once. In a terminal, run: `sudo tailscale set --operator=$USER`". Nothing runs
+  as root, and uQ has no way to ask for it.
+- scale_tail's "auto-connect" is not on the page: it is a tray-only marker file with no command
+  line, and the tray doesn't run under uQ.
+- Names, logins and links come from outside, so they are shown as plain text only (`UqLabel`, or
+  a read-only text field for the sign-in link, which `logic.js` accepts only as a plain `https`
+  link). At most 200 devices are listed.
+
 ## Testing
 
-- `uqctl integrations check uq/` (from uQ 0.4): clean apart from the programs it can't find
-  where scale_tail and tailscale aren't installed.
+- `uqctl integrations check uq/` (uQ 0.3.0-rc.1 or later): clean apart from the programs it can't
+  find where scale_tail and tailscale aren't installed. `--no-programs` skips that one check
+  (CI uses it).
+- `node --test 'tests/uq/*.test.mjs'` tests the page's `logic.js` and `page.toml` without Qt.
+- `tests/uq/tst_page.qml` loads the page with uQ's settings page test kit (a stub
+  `org.uq.settings` module and a fake `ctx`):
+  `QT_QPA_PLATFORM=offscreen qmltestrunner -import tests/uq/stub -input tests/uq` (CI runs it,
+  with the widget test below).
 - `tests/uq/tst_widget.qml` loads the widget with a fake `ctx` and checks the tile, the detail
   view and the commands it runs:
-  `QT_QPA_PLATFORM=offscreen qmltestrunner -input tests/uq/tst_widget.qml` (CI runs it).
+  `QT_QPA_PLATFORM=offscreen qmltestrunner -input tests/uq/tst_widget.qml` (CI runs it with the page test).
 - `cargo test` covers `status --json`, the argument parsing and the autostart entry.

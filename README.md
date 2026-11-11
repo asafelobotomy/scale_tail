@@ -31,7 +31,9 @@ the uQ integration below.
 
 On the [uQ desktop](https://github.com/asafelobotomy/uq), Tailscale lives in quick settings
 instead of the tray: a tile with an on/off switch, the current exit node and an exit-node picker
-(`uq/`, see [uq/README.md](uq/README.md)). The tray is not started there: the autostart entry
+(`uq/`, see [uq/README.md](uq/README.md)), and Settings gets a **Tailscale** page under Apps: the
+connection, the account, the exit node, the routes and local-network switches, and the list of
+devices. The tray is not started there: the autostart entry
 says `NotShowIn=uQ;`, and `scale_tail` exits when uQ is running (`scale_tail --tray` starts it
 anyway).
 
