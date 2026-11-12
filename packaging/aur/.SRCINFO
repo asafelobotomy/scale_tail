@@ -21,6 +21,6 @@ pkgbase = scale_tail
 	options = !lto
 	options = !debug
 	source = scale_tail-0.6.0.tar.gz::https://github.com/asafelobotomy/scale_tail/archive/refs/tags/v0.6.0.tar.gz
-	sha256sums = SKIP
+	sha256sums = 72b72b5b1e097c225d72437b1e964711db05c3c656e3625f9b2e06b4aa7dbefa
 
 pkgname = scale_tail
