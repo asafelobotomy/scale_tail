@@ -1,6 +1,6 @@
 [package]
 name = "scale_tail"
-version = "0.5.1"
+version = "0.6.0"
 license = "MIT"
 edition = "2024"
 
