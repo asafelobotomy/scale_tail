@@ -32,6 +32,19 @@
     <binary>scale_tail</binary>
   </provides>
   <releases>
+    <release version="0.6.0" date="2026-11-12">
+      <description>
+        <ul>
+          <li>uQ quick-settings tile: on/off switch, current exit node and an exit-node picker</li>
+          <li>uQ Settings Tailscale page: connection, account, exit node, routes, local-network access and devices</li>
+          <li>scale_tail status --json prints a summary of Tailscale's state for scripts</li>
+          <li>The tray is not started under uQ; scale_tail --tray starts it anyway</li>
+          <li>Tailscale is polled less often and the tray stays responsive while actions run</li>
+          <li>Arch Linux PKGBUILD that also installs the uQ integration</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/asafelobotomy/scale_tail/releases/tag/v0.6.0</url>
+    </release>
     <release version="0.5.1" date="2026-11-05">
       <description>
         <ul>
