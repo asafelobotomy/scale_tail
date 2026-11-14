@@ -28,6 +28,19 @@ Item {
         fail: function (r) { throw new Error("failed: " + r); }
     })
 
+    // uQ's ctx.view: whether the slot is on screen.
+    QtObject { id: view; property bool shown: false }
+    property var viewCtx: Object.assign({}, ctx, { view: view })
+
+    Loader {
+        id: hiddenTile
+        width: 300; height: 32
+        y: 300
+        active: false
+        source: Qt.resolvedUrl("../../uq/widgets/scale-tail/Widget.qml")
+        onLoaded: item.ctx = root.viewCtx
+    }
+
     ColumnLayout {
         width: 300
         Loader {
@@ -55,6 +68,40 @@ Item {
             if (item.text !== undefined && typeof item.text === "string" && item.visible) out.push(item.text);
             for (var i = 0; i < item.children.length; i++) texts(item.children[i], out);
             return out;
+        }
+
+        function poll(item) {
+            return findChild(item, "poll");
+        }
+
+        // Without ctx.view (older uQ) the tile polls all the time, as before.
+        function test_polls_without_view() {
+            verify(tile.item.onScreen);
+            verify(poll(tile.item).running);
+        }
+
+        // With ctx.view it reads Tailscale's state only while it is on screen, and at once when
+        // it comes into view.
+        function test_polls_only_on_screen() {
+            root.answers = { status: { code: 0, output: { version: 1, state: "stopped", connected: false,
+                message: "", tailnet: "", self: null, exit_node: null, exit_nodes: [] } } };
+            view.shown = false;
+            root.calls = [];
+            hiddenTile.active = true;
+            tryVerify(function () { return hiddenTile.item !== null; });
+            var w = hiddenTile.item;
+            verify(!w.onScreen);
+            verify(!poll(w).running);
+            wait(50);
+            compare(root.calls.length, 0, "no status read while hidden");
+            view.shown = true;
+            verify(poll(w).running);
+            compare(root.calls.length, 1);
+            compare(root.calls[0].id, "status");
+            tryVerify(function () { return w.status !== null && w.status.state === "stopped"; });
+            view.shown = false;
+            verify(!poll(w).running);
+            hiddenTile.active = false;
         }
 
         function test_flow() {
