@@ -18,6 +18,9 @@ Item {
     // A command is running: the switch and the picker wait for it.
     property bool busy: false
     property bool detailShown: false
+    // Whether the tile is on screen (quick settings or its detail view open). uQ before
+    // ctx.view has no way to say, so the tile counts as shown there, as before.
+    readonly property bool onScreen: !ctx || !ctx.view || ctx.view.shown
 
     readonly property bool connected: status !== null && status.connected === true
     readonly property var exitNodes: status && Array.isArray(status.exit_nodes) ? status.exit_nodes : []
@@ -79,11 +82,15 @@ Item {
         act(connected ? "down" : "up", []);
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: if (onScreen) refresh()
+    // Read the state again as soon as the tile comes into view.
+    onOnScreenChanged: if (onScreen) refresh()
 
+    // Poll only while the tile can be seen: nothing reads the state while quick settings is closed.
     Timer {
+        objectName: "poll"
         interval: widget.detailShown ? 5000 : 15000
-        running: widget.ctx !== undefined && widget.ctx !== null
+        running: widget.ctx !== undefined && widget.ctx !== null && widget.onScreen
         repeat: true
         onTriggered: widget.refresh()
     }
