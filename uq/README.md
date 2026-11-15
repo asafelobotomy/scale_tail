@@ -14,7 +14,8 @@ unconditionally (`packaging/aur/PKGBUILD`).
 It runs only the commands declared in `widget.toml`, never a shell:
 
 - `scale_tail status --json` every 15 s (5 s while the detail view is open), a small summary of
-  `tailscale status --json`:
+  `tailscale status --json`. On uQ with `ctx.view` it polls only while quick settings is open
+  (and reads once as soon as it opens); on older uQ it polls all the time:
 
   ```json
   {"version": 1, "state": "running", "connected": true, "message": "", "tailnet": "example.com",
