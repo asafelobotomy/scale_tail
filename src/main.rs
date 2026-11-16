@@ -3,6 +3,8 @@
 //! Shells out to `tailscale` (status --json / up / down / set) and exposes
 //! the result as a StatusNotifierItem menu (KDE, GNOME w/ AppIndicator, etc).
 
+mod cli;
+
 use ksni::menu::*;
 use ksni::TrayMethods;
 use serde::Deserialize;
@@ -27,6 +29,15 @@ struct RawStatus {
     peer: HashMap<String, RawNode>,
     #[serde(default)]
     current_tailnet: Option<Tailnet>,
+    #[serde(default)]
+    user: HashMap<String, RawUser>,
+}
+
+#[derive(Deserialize, Default, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+struct RawUser {
+    #[serde(default)]
+    login_name: String,
 }
 
 #[derive(Deserialize, Default, Clone, Debug)]
@@ -53,6 +64,8 @@ struct RawNode {
     exit_node: bool,
     #[serde(default)]
     exit_node_option: bool,
+    #[serde(default, rename = "UserID")]
+    user_id: i64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -117,6 +130,8 @@ impl Prefs {
 struct Account {
     id: String,
     label: String,
+    tailnet: String,
+    login_name: String,
     active: bool,
 }
 
@@ -309,6 +324,8 @@ struct Status {
     state: State,
     me: Option<Node>,
     tailnet: String,
+    /// The Tailscale login of this computer's account ("" when unknown).
+    login: String,
     peers: Vec<Node>,
 }
 
@@ -322,6 +339,7 @@ fn parse_status(stdout: &[u8], stderr: &[u8]) -> Status {
                 state: State::Unavailable(String::from_utf8_lossy(stderr).trim().to_string()),
                 me: None,
                 tailnet: String::new(),
+                login: String::new(),
                 peers: vec![],
             };
         }
@@ -334,13 +352,14 @@ fn parse_status(stdout: &[u8], stderr: &[u8]) -> Status {
     };
     let mut peers: Vec<Node> = raw.peer.values().map(Node::from).collect();
     peers.sort_by(|a, b| b.online.cmp(&a.online).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
-    Status { state, me: raw.me.as_ref().map(Node::from), tailnet: raw.current_tailnet.map(|t| t.name).unwrap_or_default(), peers }
+    let login = raw.me.as_ref().and_then(|m| raw.user.get(&m.user_id.to_string())).map(|u| u.login_name.clone()).unwrap_or_default();
+    Status { state, me: raw.me.as_ref().map(Node::from), tailnet: raw.current_tailnet.map(|t| t.name).unwrap_or_default(), login, peers }
 }
 
 async fn fetch_status() -> Status {
     match Command::new("tailscale").args(["status", "--json"]).stdin(Stdio::null()).output().await {
         Ok(o) => parse_status(&o.stdout, &o.stderr),
-        Err(e) => Status { state: State::Unavailable(format!("tailscale CLI not found: {e}")), me: None, tailnet: String::new(), peers: vec![] },
+        Err(e) => Status { state: State::Unavailable(format!("tailscale CLI not found: {e}")), me: None, tailnet: String::new(), login: String::new(), peers: vec![] },
     }
 }
 
@@ -348,7 +367,7 @@ async fn fetch_status() -> Status {
 /// instead of asking `tailscale debug prefs` and `switch --list` again: those
 /// change only through our own actions or rarely, so they are re-read less often.
 async fn fetch(prev: Option<&Snapshot>) -> Snapshot {
-    let Status { state, me, tailnet, peers } = fetch_status().await;
+    let Status { state, me, tailnet, peers, .. } = fetch_status().await;
     if let State::Unavailable(_) = state {
         return Snapshot { state, me, tailnet, peers, prefs: Prefs::default(), accounts: vec![], app: load_settings() };
     }
@@ -402,7 +421,8 @@ fn parse_accounts(out: &str) -> Vec<Account> {
                 return None;
             }
             let active = f[2].ends_with('*');
-            Some(Account { id: f[0].to_string(), label: format!("{} ({})", f[2].trim_end_matches('*'), f[1]), active })
+            let login_name = f[2].trim_end_matches('*').to_string();
+            Some(Account { id: f[0].to_string(), label: format!("{login_name} ({})", f[1]), tailnet: f[1].to_string(), login_name, active })
         })
         .collect()
 }
@@ -877,23 +897,19 @@ impl ksni::Tray for TsTray {
     }
 }
 
-const USAGE: &str = "usage: scale_tail [--tray]       start the tray (--tray: even under uQ)
-       scale_tail status --json   print Tailscale's state as JSON and exit
-       scale_tail --version";
-
 #[derive(Debug, PartialEq)]
 enum Cli {
     Tray { force: bool },
-    StatusJson,
+    Run(cli::Cmd),
 }
 
 fn cli_command(args: &[String]) -> Result<Cli, String> {
-    // Other arguments are ignored, as they always were, so existing launchers keep working.
-    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
-        ["status", "--json"] => Ok(Cli::StatusJson),
-        ["status", ..] => Err("status needs --json".into()),
-        _ => Ok(Cli::Tray { force: args.iter().any(|a| a == "--tray") }),
+    if let Some(cmd) = cli::parse(args)? {
+        return Ok(Cli::Run(cmd));
     }
+    // `open` starts the tray even under uQ (the launcher entry runs it). Other arguments are
+    // ignored, as they always were, so existing launchers keep working.
+    Ok(Cli::Tray { force: args.iter().any(|a| a == "--tray" || a == "open") })
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -910,12 +926,9 @@ async fn main() {
                 return;
             }
         }
-        Ok(Cli::StatusJson) => {
-            println!("{}", status_json(&fetch_status().await));
-            return;
-        }
+        Ok(Cli::Run(cmd)) => std::process::exit(cli::run(cmd).await),
         Err(e) => {
-            eprintln!("scale_tail: {e}\n\n{USAGE}");
+            eprintln!("scale_tail: {e}\n\n{}", cli::USAGE);
             std::process::exit(2);
         }
     }
@@ -1078,7 +1091,8 @@ mod tests {
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(cli_command(&a(&[])), Ok(Cli::Tray { force: false }));
         assert_eq!(cli_command(&a(&["--tray"])), Ok(Cli::Tray { force: true }));
-        assert_eq!(cli_command(&a(&["status", "--json"])), Ok(Cli::StatusJson));
+        assert_eq!(cli_command(&a(&["open"])), Ok(Cli::Tray { force: true }));
+        assert_eq!(cli_command(&a(&["status", "--json"])), Ok(Cli::Run(cli::Cmd::Status { full: false })));
         assert!(cli_command(&a(&["status"])).is_err());
         assert!(cli_command(&a(&["status", "--text"])).is_err());
         // Unknown arguments start the tray, as before.

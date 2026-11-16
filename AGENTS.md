@@ -9,9 +9,9 @@ System-tray control centre for the Tailscale CLI, in Rust (single crate, StatusN
 - AppImage: `packaging/build-appimage.sh` (needs `appimagetool` on PATH; `zsyncmake` optional, for the `.zsync` file). Writes `scale_tail-<version>-x86_64.AppImage` in the repo root (git-ignored).
 
 ## Layout
-- `src/main.rs`: the whole app.
+- `src/main.rs`: the tray and the Tailscale model. `src/cli.rs`: the command line the uQ page uses (`status --full`, `config`, `exit-node`, `switch`, `logout`, `ping`, `update check`, `--dry-run` plans; see `uq/README.md`). `tests/cli.rs` runs it against `tests/fake/tailscale`.
 - `packaging/`: `build-appimage.sh`, desktop file, AppStream metainfo, icons (`gen_icons.py` generates them), SVGs. `packaging/aur/`: PKGBUILD and .SRCINFO (release tarball; regenerate .SRCINFO after edits).
-- `uq/`: uQ desktop integration (quick-settings widget in `uq/widgets/`, Settings page in `uq/pages/scale-tail/`), installed to `/usr/share/uq/` by the PKGBUILD (it installs every file of each folder). Check with `uqctl integrations check --no-programs uq/` (uQ 0.3.0-rc.1 or later). Tests: `node --test 'tests/uq/*.test.mjs'` (page logic and manifest) and `QT_QPA_PLATFORM=offscreen qmltestrunner -import tests/uq/stub -input tests/uq` (widget and page; `tests/uq/` holds uQ's page test kit, see its README).
+- `uq/`: uQ desktop integration (quick-settings widget in `uq/widgets/`, Settings page in `uq/pages/scale-tail/`), installed to `/usr/share/uq/` by the PKGBUILD (it installs every file of each folder). Check with `uqctl integrations check --no-programs uq/` (uQ 0.3.0-rc.1 or later). Page is `uq_api = 3` (needs a uQ commit/release with it; CI pins `UQ_REV`). Tests: `node --test 'tests/uq/*.test.mjs'` (page logic and manifest) and `QT_QPA_PLATFORM=offscreen qmltestrunner -import tests/uq/stub -input tests/uq` (widget and page; `tests/uq/` holds uQ's page test kit, see its README).
 
 ## Conventions
 - Rust edition 2024, MIT. Work on `main`.  `Cargo.lock` is committed.
