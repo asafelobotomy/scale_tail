@@ -1,0 +1,32 @@
+#!/bin/sh
+# A stand-in for the `tailscale` CLI, for tests/cli.rs. Logs every call to $FAKE_LOG; the
+# daemon's answers come from $FAKE_STATE (running | stopped | needs_login | down).
+echo "$*" >> "$FAKE_LOG"
+case "$1 $2" in
+  "status --json")
+    case "$FAKE_STATE" in
+      down) echo "failed to connect to local tailscaled" >&2; exit 1 ;;
+      needs_login) echo '{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc"}'; exit 0 ;;
+      stopped) echo '{"BackendState":"Stopped"}'; exit 0 ;;
+    esac
+    cat <<'JSON'
+{"BackendState":"Running","AuthURL":"",
+ "Self":{"HostName":"laptop","DNSName":"laptop.tail1.ts.net.","OS":"linux","TailscaleIPs":["100.64.0.1"],"Online":true,"UserID":7},
+ "CurrentTailnet":{"Name":"example.com"},
+ "User":{"7":{"LoginName":"me@example.com"}},
+ "Peer":{"k:a":{"HostName":"vps","DNSName":"vps.tail1.ts.net.","OS":"linux","TailscaleIPs":["100.64.0.2"],"Online":true,"ExitNode":false,"ExitNodeOption":true},
+         "k:b":{"HostName":"nas","DNSName":"nas.tail1.ts.net.","OS":"linux","TailscaleIPs":["100.64.0.3"],"Online":false,"ExitNodeOption":true},
+         "k:c":{"HostName":"phone","DNSName":"phone.tail1.ts.net.","OS":"android","TailscaleIPs":["100.64.0.4"],"Online":true}}}
+JSON
+    ;;
+  "debug prefs")
+    echo '{"RouteAll":true,"CorpDNS":true,"ExitNodeAllowLANAccess":false,"ShieldsUp":false,"RunSSH":false,"AdvertiseRoutes":["0.0.0.0/0","::/0"]}' ;;
+  "switch --list")
+    printf 'ID   Tailnet       Account\nab1  example.com   me@example.com*\ncd2  work.example  me@work.example\n' ;;
+  "exit-node suggest") echo "Suggested exit node: vps.tail1.ts.net." ;;
+  "ping -c")
+    if [ "$FAKE_PING" = "none" ]; then echo "ping timed out" >&2; exit 1; fi
+    echo "pong from vps (100.64.0.2) via DERP(nyc) in 23ms" ;;
+  "set "*|"up "*|"down "*|"logout "*|"switch "*) : ;;
+esac
+exit 0
