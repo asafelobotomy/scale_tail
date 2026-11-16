@@ -308,7 +308,7 @@ async fn read_prefs() -> Result<Prefs, String> {
     serde_json::from_str(&out).map_err(|e| format!("Tailscale's settings were not readable: {e}"))
 }
 
-async fn read_accounts() -> Vec<Account> {
+async fn read_profiles() -> Vec<Account> {
     ts(&["switch", "--list"]).await.map(|o| parse_accounts(&o)).unwrap_or_default()
 }
 
@@ -373,7 +373,7 @@ async fn status(full: bool) -> (Value, i32) {
         d.insert("account".into(), json!(s.login));
         d.insert("peers".into(), json!(s.peers.iter().map(node_json).collect::<Vec<_>>()));
         d.insert("prefs".into(), if reachable { read_prefs().await.ok().map(|p| prefs_json(&p)).into() } else { Value::Null });
-        d.insert("accounts".into(), json!(if reachable { read_accounts().await } else { vec![] }.iter().map(account_json).collect::<Vec<_>>()));
+        d.insert("accounts".into(), json!(if reachable { read_profiles().await } else { vec![] }.iter().map(account_json).collect::<Vec<_>>()));
         d.insert("app".into(), app_status());
     }
     (doc, 0)
@@ -488,11 +488,11 @@ async fn exit_node(choice: ExitChoice, dry_run: bool) -> (Value, i32) {
 }
 
 async fn accounts() -> (Value, i32) {
-    (json!({ "version": 1, "accounts": read_accounts().await.iter().map(account_json).collect::<Vec<_>>() }), 0)
+    (json!({ "version": 1, "accounts": read_profiles().await.iter().map(account_json).collect::<Vec<_>>() }), 0)
 }
 
 async fn switch(id: &str, dry_run: bool) -> (Value, i32) {
-    let list = read_accounts().await;
+    let list = read_profiles().await;
     let Some(a) = list.iter().find(|a| a.id == id) else {
         let why = "That account isn't signed in on this computer.";
         return if dry_run { refuse(why) } else { failure(why) };
