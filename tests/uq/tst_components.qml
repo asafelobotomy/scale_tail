@@ -43,6 +43,31 @@ Item {
             title: "Failed"
             detail: "why"
         }
+        // uq_api = 2
+        SettingsPage {
+            id: tabbed
+            title: "Storage"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 200
+            SettingsTab {
+                id: first
+                title: "Overview"
+                SettingsCard {
+                    id: settingsCard
+                    title: "Space"
+                    help: "What you can free"
+                    UqAppIcon {
+                        id: appIcon
+                        name: "/etc/passwd"
+                        label: "steam"
+                    }
+                }
+            }
+            SettingsTab {
+                id: second
+                title: "Apps"
+            }
+        }
     }
 
     TestCase {
@@ -58,6 +83,18 @@ Item {
             compare(switchRow.toggle.checked, true);
             compare(slider.slider.value, 0.5);
             compare(card.title, "Failed");
+        }
+
+        function test_api2_layout() {
+            compare(tabbed.tabList.length, 2);
+            compare(tabbed.currentIndex, 0);
+            second.activate();
+            compare(tabbed.currentIndex, 1);
+            tabbed.show(first);
+            compare(tabbed.currentIndex, 0);
+            compare(settingsCard.title, "Space");
+            verify(!appIcon.plainName, "a path is never looked up as an icon");
+            verify(!appIcon.found);
         }
 
         function test_switch_snaps_back_until_the_page_agrees() {

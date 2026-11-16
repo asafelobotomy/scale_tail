@@ -5,11 +5,11 @@
   stub `org.uq.settings` module in `stub/` and `FakeContext.qml`.
 - `tst_components.qml` checks the stub itself.
 - `logic.test.mjs` tests `uq/pages/scale-tail/logic.js` and `page.toml` with Node (`load-logic.mjs`
-  loads the logic without Qt).
+  loads the logic without Qt, `toml-lite.mjs` reads the manifest).
 
 `stub/`, `FakeContext.qml` and `tst_components.qml` are uQ's settings page test kit
-(`templates/settings-page-tests/` in the uQ repository) as of uQ v0.3.0-rc.1. Refresh them when
-moving to a newer uQ.
+(`templates/settings-page-tests/` in the uQ repository) as of uQ main commit 6dd8b29 (`uq_api = 3`: it adds
+`SettingsPage`, `SettingsCard`, `UqAppIcon`, `ctx.command.stream`). Refresh them when moving to a newer uQ.
 
 From the repository root:
 
