@@ -131,7 +131,7 @@ struct Account {
     id: String,
     label: String,
     tailnet: String,
-    account: String,
+    login_name: String,
     active: bool,
 }
 
@@ -421,8 +421,8 @@ fn parse_accounts(out: &str) -> Vec<Account> {
                 return None;
             }
             let active = f[2].ends_with('*');
-            let account = f[2].trim_end_matches('*').to_string();
-            Some(Account { id: f[0].to_string(), label: format!("{account} ({})", f[1]), tailnet: f[1].to_string(), account, active })
+            let login_name = f[2].trim_end_matches('*').to_string();
+            Some(Account { id: f[0].to_string(), label: format!("{login_name} ({})", f[1]), tailnet: f[1].to_string(), login_name, active })
         })
         .collect()
 }

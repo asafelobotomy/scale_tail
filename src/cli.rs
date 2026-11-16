@@ -336,7 +336,7 @@ fn node_json(n: &Node) -> Value {
 }
 
 fn account_json(a: &Account) -> Value {
-    json!({ "id": a.id, "label": a.label, "tailnet": a.tailnet, "account": a.account, "active": a.active })
+    json!({ "id": a.id, "label": a.label, "tailnet": a.tailnet, "account": a.login_name, "active": a.active })
 }
 
 // ---------- commands ----------
@@ -507,7 +507,7 @@ async fn switch(id: &str, dry_run: bool) -> (Value, i32) {
         );
     }
     match ts(&["switch", id]).await {
-        Ok(_) => ok(json!({ "account": a.account, "tailnet": a.tailnet })),
+        Ok(_) => ok(json!({ "account": a.login_name, "tailnet": a.tailnet })),
         Err(e) => failure(e),
     }
 }
