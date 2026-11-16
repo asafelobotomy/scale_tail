@@ -32,6 +32,18 @@
     <binary>scale_tail</binary>
   </provides>
   <releases>
+    <release version="0.7.0" date="2026-11-16">
+      <description>
+        <ul>
+          <li>uQ Settings Tailscale page rebuilt: five tabs (connection and exit node, devices, network, account, preferences)</li>
+          <li>Devices tab: copy an address, ping with live progress, use a device as the exit node</li>
+          <li>Exit node, SSH, shields up, DNS, account switch and sign out show what they will change before asking</li>
+          <li>New commands: status --full, config show|set, exit-node, accounts, switch, logout, connect, ping --stream, update check, open, and --dry-run plans (all JSON)</li>
+          <li>The launcher entry runs scale_tail open, which starts the tray even under uQ</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/asafelobotomy/scale_tail/releases/tag/v0.7.0</url>
+    </release>
     <release version="0.6.0" date="2026-11-12">
       <description>
         <ul>
