@@ -5,6 +5,9 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  # Started by tag-release.yml on the tag it creates (a tag made with GITHUB_TOKEN triggers no push
+  # event), or by hand on an existing tag.
+  workflow_dispatch:
 
 permissions:
   contents: read
