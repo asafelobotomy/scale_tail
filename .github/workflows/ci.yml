@@ -33,9 +33,8 @@ jobs:
     name: uQ integration (widget, page, check)
     runs-on: ubuntu-24.04
     env:
-      # The uQ commit whose `uqctl` and settings page test kit this repo follows: uq_api 3 (uq#75, merged),
-      # until a uQ release has it. Then this goes back to that release's tag (`--tag`).
-      UQ_REV: 6dd8b29560a18e8c195c917508a260a1824dbd91
+      # The uQ release whose `uqctl` checks the page (uq_api 3 is in every release since v0.3.0).
+      UQ_TAG: v0.3.21
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Qt Quick and qmltestrunner
@@ -66,10 +65,10 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.uq
-          key: uqctl-${{ env.UQ_REV }}
+          key: uqctl-${{ env.UQ_TAG }}
       - name: Build uqctl
         if: steps.uqctl.outputs.cache-hit != 'true'
-        run: cargo install --locked --git https://github.com/asafelobotomy/uq --rev "$UQ_REV" uqctl --root "$HOME/.uq"
+        run: cargo install --locked --git https://github.com/asafelobotomy/uq --tag "$UQ_TAG" uqctl --root "$HOME/.uq"
       # `--no-programs` skips only the "program exists" check: scale_tail and tailscale aren't
       # installed here. Paths and everything else are still checked.
       - name: uQ integration check
@@ -107,3 +106,29 @@ jobs:
           files: |
             scale_tail-*.AppImage
             scale_tail-*.AppImage.zsync
+
+  # The AUR package's files for a release (scripts/aur-files.sh): the PKGBUILD with the version
+  # and the checksum of GitHub's archive of the tag filled in, and its .SRCINFO. They are the
+  # `aur` artifact; the maintainer pushes them to the AUR from their own machine.
+  aur:
+    needs: [check, appimage]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}
+          persist-credentials: false
+      - name: Write the AUR files
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/aur-files.sh "$TAG"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: aur
+          path: aur/
+          include-hidden-files: true
+          if-no-files-found: ignore
