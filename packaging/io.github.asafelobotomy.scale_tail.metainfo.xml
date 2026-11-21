@@ -32,6 +32,11 @@
     <binary>scale_tail</binary>
   </provides>
   <releases>
+    <release version="0.7.2" date="2026-11-21">
+      <description>
+        <p>One tray per session: starting scale_tail again no longer adds a second tray icon.</p>
+      </description>
+    </release>
     <release version="0.7.1" date="2026-11-20">
       <description>
         <p>Dependency updates (ureq 3.5.2, zbus 6.3.0).</p>
