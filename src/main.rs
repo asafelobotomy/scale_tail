@@ -292,6 +292,21 @@ async fn uq_running() -> bool {
     tokio::time::timeout(Duration::from_secs(2), check).await.ok().flatten().unwrap_or(false)
 }
 
+/// The session-bus name the tray owns, so only one runs per session.
+const INSTANCE_NAME: &str = "io.github.asafelobotomy.scale_tail";
+
+/// One tray per session: own [`INSTANCE_NAME`] on the session bus. `Err` when another scale_tail
+/// tray already owns it (a second one would show a second icon). The connection must be kept for
+/// the tray's lifetime. Without a session bus the tray starts anyway.
+async fn claim_instance() -> Result<Option<zbus::Connection>, ()> {
+    let Ok(conn) = zbus::Connection::session().await else { return Ok(None) };
+    match conn.request_name_with_flags(INSTANCE_NAME, zbus::fdo::RequestNameFlags::DO_NOT_QUEUE).await {
+        Ok(_) => Ok(Some(conn)),
+        Err(zbus::Error::NameTaken) => Err(()),
+        Err(_) => Ok(None),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct Snapshot {
     state: State,
@@ -932,6 +947,10 @@ async fn main() {
             std::process::exit(2);
         }
     }
+    let Ok(_instance) = claim_instance().await else {
+        eprintln!("scale_tail: the tray is already running in this session");
+        return;
+    };
     migrate_autostart();
     let (tx, mut rx) = unbounded_channel::<Action>();
     let first = fetch(None).await;
