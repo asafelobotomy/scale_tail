@@ -7,7 +7,7 @@
 pkgname=scale_tail
 # For a release, CI's `aur` job (scripts/aur-files.sh) fills in pkgver and the tarball's sha256
 # and writes .SRCINFO; copy that artifact to the AUR repository, and back here.
-pkgver=0.7.2
+pkgver=0.7.3
 pkgrel=1
 pkgdesc='System-tray control centre for the Tailscale CLI'
 arch=(x86_64 aarch64)

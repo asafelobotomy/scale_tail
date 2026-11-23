@@ -23,6 +23,8 @@ jobs:
           toolchain: stable
           components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: uQ's kits (uq/native.toml) are the pinned releases
+        run: scripts/check-uq-native.sh
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
@@ -34,7 +36,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # The uQ release whose `uqctl` checks the page (uq_api 3 is in every release since v0.3.0).
-      UQ_TAG: v0.3.21
+      UQ_TAG: v0.3.37
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Qt Quick and qmltestrunner

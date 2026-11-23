@@ -4,6 +4,8 @@
 //! the result as a StatusNotifierItem menu (KDE, GNOME w/ AppIndicator, etc).
 
 mod cli;
+#[rustfmt::skip]
+mod uq_consts; // uQ's native/uq-consts, vendored unchanged
 
 use ksni::menu::*;
 use ksni::TrayMethods;
@@ -286,7 +288,7 @@ async fn uq_running() -> bool {
     let check = async {
         let conn = zbus::Connection::session().await.ok()?;
         let dbus = zbus::fdo::DBusProxy::new(&conn).await.ok()?;
-        let name = zbus::names::BusName::try_from("org.uq.Desktop1").ok()?;
+        let name = zbus::names::BusName::try_from(uq_consts::dbus::DESKTOP_NAME).ok()?;
         dbus.name_has_owner(name).await.ok()
     };
     tokio::time::timeout(Duration::from_secs(2), check).await.ok().flatten().unwrap_or(false)
