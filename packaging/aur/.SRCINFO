@@ -18,6 +18,7 @@ pkgbase = scale_tail
 	optdepends = xclip: copy IPs and names (X11)
 	optdepends = zenity: pick files to send with Taildrop
 	optdepends = uq: Tailscale tile in uQ quick settings instead of the tray
+	conflicts = uq<0.3.41
 	options = !lto
 	options = !debug
 	source = scale_tail-0.7.3.tar.gz::https://github.com/asafelobotomy/scale_tail/archive/refs/tags/v0.7.3.tar.gz
